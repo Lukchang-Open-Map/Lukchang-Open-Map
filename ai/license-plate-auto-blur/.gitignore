@@ -133,3 +133,4 @@ exported
 !best.joblib
 !best.bin
 !best.weights
+*.jpg
