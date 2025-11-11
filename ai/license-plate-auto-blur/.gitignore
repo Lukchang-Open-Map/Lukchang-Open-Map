@@ -121,3 +121,15 @@ weights/
 *.txt
 
 exported
+!best.engine
+!best.pt
+!best.pth
+!best.h5
+!best.hdf5
+!best.pb
+!best.onnx
+!best.pkl
+!best.pickle
+!best.joblib
+!best.bin
+!best.weights

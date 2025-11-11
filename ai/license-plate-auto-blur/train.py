@@ -6,7 +6,7 @@ if __name__ == "__main__":  # Multiprocessing guard
     
     model.train(
         data="data.yaml",
-        epochs=0,
+        epochs=100,
         imgsz=640,
         batch=-1,  # Auto ~60% VRAM
         device=0,
