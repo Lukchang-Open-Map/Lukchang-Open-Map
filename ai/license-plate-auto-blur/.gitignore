@@ -1,0 +1,121 @@
+# ----------------------------------------------------------------
+# Generic Python & Environment Files
+# ----------------------------------------------------------------
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Environment variable files (NEVER commit secrets!)
+.env
+.env.*
+!*.env.example
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE files
+.idea/
+.vscode/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# ----------------------------------------------------------------
+# Datasets (Images, Videos, Archives)
+# ----------------------------------------------------------------
+# Common data directories
+data/
+dataset/
+datasets/
+images/
+videos/
+raw_data/
+
+# Typical train/test/validation splits
+train/
+test/
+valid/
+validation/
+
+# Large archives used to store datasets
+*.zip
+*.rar
+*.tar
+*.gz
+*.tar.gz
+*.7z
+
+# ----------------------------------------------------------------
+# Labels & Annotations
+# ----------------------------------------------------------------
+# Common label directories
+labels/
+annotations/
+#
+# Note: For YOLO, your labels (e.g., 'img1.txt') are often
+# inside a 'data/labels/' folder. Ignoring the parent 'data/'
+# or 'labels/' directory is the best way to handle this.
+
+# ----------------------------------------------------------------
+# Models, Checkpoints & Outputs
+# ----------------------------------------------------------------
+# Common model/checkpoint directories
+models/
+model/
+saved_models/
+checkpoints/
+output/
+outputs/
+bin/
+
+# Specific model file extensions
+*.pt
+*.pth
+*.h5
+*.hdf5
+*.pb
+*.onnx
+*.pkl
+*.pickle
+*.joblib
+model.bin
+model.weights
+
+# ----------------------------------------------------------------
+# Logs & Experiment Tracking
+# ----------------------------------------------------------------
+logs/
+log/
+*.log
+tensorboard/
+# wandb/  (Uncomment if you don't want to track wandb runs)
+mlruns/
+.mlflow-props
+
+# ----------------------------------------------------------------
+# YOLO Specific
+# ----------------------------------------------------------------
+# Default output directory for YOLOv5, v7, v8, etc.
+# This contains ALL logs, plots, weights (best.pt, last.pt), etc.
+runs/
+
+# Common directory for custom weights
+weights/
+
+# Dataset cache files
+*.cache
+*.cache.npy
+*.cache.json
+
+*.txt
