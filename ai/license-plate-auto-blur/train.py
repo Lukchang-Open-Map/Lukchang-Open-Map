@@ -2,7 +2,7 @@ from ultralytics import YOLO
 
 if __name__ == "__main__":  # Multiprocessing guard
     
-    model = YOLO("yolo11n.pt")
+    model = YOLO("license-plate-finetune-v1n.onnx")
     
     model.train(
         data="data.yaml",
