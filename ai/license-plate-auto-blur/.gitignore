@@ -119,3 +119,5 @@ weights/
 *.cache.json
 
 *.txt
+
+exported
