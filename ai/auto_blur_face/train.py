@@ -8,7 +8,7 @@ if __name__ == "__main__":  # Multiprocessing guard
         data="data.yaml",
         epochs=100,
         imgsz=640,
-        batch=-1,  # Auto ~60% VRAM
+        batch=16,  # Auto ~60% VRAM
         device=0,
         multi_scale=True,  # Enabled for scale robustness
         cache=True,  # 'ram' for 32GB speed

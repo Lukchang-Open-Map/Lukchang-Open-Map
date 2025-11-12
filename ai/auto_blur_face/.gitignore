@@ -120,7 +120,7 @@ weights/
 
 *.txt
 
-
+exported
 !best.engine
 !best.pt
 !best.pth
