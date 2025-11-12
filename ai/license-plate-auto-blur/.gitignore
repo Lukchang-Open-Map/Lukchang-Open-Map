@@ -111,7 +111,6 @@ mlruns/
 runs/
 
 # Common directory for custom weights
-weights/
 
 # Dataset cache files
 *.cache
