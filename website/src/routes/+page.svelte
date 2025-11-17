@@ -1,51 +1,15 @@
-<!-- <script>
-  import { fade } from 'svelte/transition';
-  import { userStore } from '$lib/userStore.js'; 
-  import Login from '$lib/component/Auth/Login.svelte'; 
-  import Map from '$lib/component/Map/Map.svelte';
-</script>
-
-<svelte:head>
-  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
-</svelte:head>
-
-<div class="relative h-screen w-full overflow-hidden bg-white font-kanit">
-  <div class="absolute inset-0 z-0">
-    <Map />
-  </div>
-
-  {#if !$userStore}
-    <div 
-        class="fixed inset-0 z-40 flex items-center justify-center bg-black/30 backdrop-blur-sm"
-        transition:fade={{ duration: 300 }}
-    >
-        <div class="w-full max-w-md p-4">
-            <Login />
-        </div>
-    </div>
-  {/if}
-
-</div>
-
-<style>
-  .font-kanit {
-    font-family: 'Kanit', sans-serif;
-  }
-</style> -->
-
-
 <script>
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { userStore } from '$lib/userStore.js';
 	import Login from '$lib/component/Auth/Login.svelte';
 	import Map from '$lib/component/Map/Map.svelte';
+	import SecurityDashboard from '$lib/component/Map/SecurityDashboard.svelte';
 
-	let showSplash = true;
+	let showSplash = $state(true);
 
 	onMount(async () => {
 		await new Promise((resolve) => setTimeout(resolve, 3000));
-
 		showSplash = false;
 	});
 </script>
@@ -59,11 +23,22 @@
 </svelte:head>
 
 <div class="font-kanit relative h-screen w-full overflow-hidden bg-white">
-	<div class="absolute inset-0 z-0">
-		<Map />
-	</div>
-
-	{#if !showSplash && !$userStore}
+	{#if !showSplash && $userStore}
+		<!-- Show appropriate view based on user role -->
+		{#if $userStore.role === 'security'}
+			<SecurityDashboard />
+		{:else}
+			<div class="absolute inset-0 z-0">
+				<Map />
+			</div>
+		{/if}
+	{:else if !showSplash && !$userStore}
+		<!-- Show map in background when not logged in -->
+		<div class="absolute inset-0 z-0">
+			<Map />
+		</div>
+		
+		<!-- Login Modal -->
 		<div
 			class="fixed inset-0 z-40 flex items-center justify-center bg-black/30 backdrop-blur-sm"
 			transition:fade={{ duration: 300 }}
