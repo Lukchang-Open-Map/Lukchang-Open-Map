@@ -1,4 +1,4 @@
-<script>
+<!-- <script>
   import { fade } from 'svelte/transition';
   import { userStore } from '$lib/userStore.js'; 
   import Login from '$lib/component/Auth/Login.svelte'; 
@@ -31,10 +31,10 @@
   .font-kanit {
     font-family: 'Kanit', sans-serif;
   }
-</style>
+</style> -->
 
 
-<!-- <script>
+<script>
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { userStore } from '$lib/userStore.js';
@@ -102,4 +102,4 @@
 	.font-kanit {
 		font-family: 'Kanit', sans-serif;
 	}
-</style> -->
+</style>

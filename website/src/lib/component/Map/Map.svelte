@@ -641,6 +641,33 @@ function addPinToMap(formData) {
 // ============================================================================
 
 /**
+ * Handle category selection - determines what happens when user picks a category
+ * @param {string} category - Selected category ID
+ */
+function handleCategorySelection(category) {
+    // Send Help: Show confirmation modal immediately (no map selection needed)
+    if (category === 'send_help') {
+        showSendHelpModal = true;
+        return;
+    }
+    
+    // Blocked category: Choose between point (obstacle) or line (road closure)
+    if (category === 'blocked') {
+        onShowOptions({ detail: category });
+        return;
+    }
+    
+    // Traffic category: Start line drawing directly
+    if (category === 'traffic_general') {
+        onShowOptions({ detail: category });
+        return;
+    }
+    
+    // All other categories: Normal pin placement on map
+    selectedCategory = category;
+}
+
+/**
  * Handle special categories that need additional options
  * @param {CustomEvent} event - Event with category detail
  */
@@ -679,13 +706,7 @@ function onShowOptions(event) {
 function handleMobileCategorySelect(event) {
     const category = event.detail;
     isMobileCategorySheetOpen = false;
-    
-    // Send Help is handled differently (shows confirmation modal)
-    if (category === 'send_help') {
-        showSendHelpModal = true;
-    } else {
-        selectedCategory = category;
-    }
+    handleCategorySelection(category);
 }
 
 /**
@@ -835,7 +856,7 @@ function submitLineDrawing() {
 
 // Update map cursor based on state
 $: if (map) {
-    if (selectedCategory) {
+    if (selectedCategory && selectedCategory !== 'send_help') {
         map.getCanvas().style.cursor = 'crosshair';
     } else if (!isDrawingLine) {
         map.getCanvas().style.cursor = '';
@@ -1221,7 +1242,11 @@ onMount(async () => {
                 <PinCategoryPanel
                     bind:selectedCategory
                     on:showOptions={onShowOptions}
-                    on:sendHelp={() => showSendHelpModal = true} />
+                    on:sendHelp={() => {
+                        selectedCategory = null; // Clear any selected category
+                        showSendHelpModal = true;
+                    }}
+                />
             {/if}
             
             {#if isMobile}

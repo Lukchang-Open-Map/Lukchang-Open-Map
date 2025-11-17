@@ -22,13 +22,20 @@
     };
 
     function selectPinCategory(category) {
-        if (category === 'blocked') {
-            dispatch('showOptions', category); 
-        } else if (category === 'traffic_general') {
-            dispatch('showOptions', category);
-        } else {
-            selectedCategory = category;
+        // Send Help: Dispatch event to open confirmation modal (no map selection)
+        if (category === 'send_help') {
+            dispatch('sendHelp');
+            return; // Don't set selectedCategory
         }
+        
+        // Blocked & Traffic: Show options modal
+        if (category === 'blocked' || category === 'traffic_general') {
+            dispatch('showOptions', category);
+            return; // Don't set selectedCategory yet
+        }
+        
+        // All other categories: Set selected category for map placement
+        selectedCategory = category;
         console.log('Selected Category:', selectedCategory);
     }
 </script>
