@@ -1022,6 +1022,7 @@
                     </div>
                 {/if}
             {/if}
+        </div>
 	</nav>
 
 	<!-- Success Notification -->
@@ -1091,7 +1092,7 @@
 							? 'bg-[#8F66FF] text-white'
 							: 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-100'}"
 					>
-						All ({categoryCount('all')})
+						 All ({categoryCount('all')})
 					</button>
 					{#each Object.entries(categoryDisplayNames) as [cat, displayName]}
 						{#if categoryCounts[cat] > 0}
