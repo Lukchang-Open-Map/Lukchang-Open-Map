@@ -1,6 +1,7 @@
 import {
     AlertTriangle, TrafficCone, HelpCircle, Droplet, LifeBuoy,
-    CarFront, ParkingSquare, PartyPopper, MessageSquare, Briefcase, Construction, RouteOff
+    CarFront, ParkingSquare, PartyPopper, MessageSquare, Briefcase, 
+    MapPin, Spline // Import Icon ให้ครบ
 } from 'lucide-svelte';
 
 export const CATEGORY_DISPLAY_NAMES = {
@@ -32,6 +33,14 @@ export const CATEGORY_STYLES = {
 export const BLOCKED_MODAL_CONFIG = {
     type: 'blocked',
     title: 'Report Blocked Path',
-    pointOption: { Icon: Construction, title: 'Obstacle', description: 'e.g., Fallen tree' },
-    lineOption: { Icon: RouteOff, title: 'Road Closed', description: 'e.g., Construction' }
+    pointOption: { 
+        Icon: MapPin, 
+        title: 'Obstacle', 
+        description: 'e.g. Fallen tree, Car breakdown' // อธิบายจุดเดียว
+    },
+    lineOption: { 
+        Icon: Spline, 
+        title: 'Road Closed', 
+        description: 'e.g. Construction, Flooding' // อธิบายเป็นเส้น/พื้นที่
+    }
 };

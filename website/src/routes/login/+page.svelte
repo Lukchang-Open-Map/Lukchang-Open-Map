@@ -1,18 +1,32 @@
 <script>
     import { goto } from '$app/navigation';
     import { userStore } from '$lib/stores/userStore.js';
+    import { ChevronLeft } from 'lucide-svelte';
 
     let step = 1;
     let cmuEmail = '';
     let otpArray = Array(6).fill('');
     let countdown = 50;
     let timer;
+    let emailError = '';
 
-    $: isEmailValid = cmuEmail.endsWith('@cmu.ac.th');
+    $: isEmailValid = cmuEmail.length > 0; // ตาม logic เดิม
     $: isOtpComplete = otpArray.join('').length === 6;
+    $: formattedTime = String(Math.floor(countdown / 60)).padStart(2, '0') + ':' + String(countdown % 60).padStart(2, '0');
+
+    function validateEmail() {
+        if (cmuEmail.endsWith('@cmu.ac.th')) {
+            emailError = '';
+            return true;
+        } else {
+            if (cmuEmail.length > 0) emailError = 'Please use a valid @cmu.ac.th account.';
+            return false;
+        }
+    }
+    $: if (cmuEmail) validateEmail();
 
     function sendOTP() {
-        if (!isEmailValid) return;
+        if (!validateEmail()) return;
         step = 2;
         startCountdown();
     }
@@ -26,49 +40,68 @@
     }
 
     function verifyOTP() {
-        if (otpArray.join('') === '123456') {
+        const otp = otpArray.join('');
+        if (otp === '123456') {
             clearInterval(timer);
-            let role = 'member';
-            if (cmuEmail.startsWith('security')) role = 'security';
-            else if (cmuEmail.startsWith('admin')) role = 'admin';
-
+            const role = cmuEmail.startsWith('security') ? 'security' : cmuEmail.startsWith('admin') ? 'admin' : 'member';
             userStore.set({ name: cmuEmail.split('@')[0], email: cmuEmail, role });
-
-            if (role === 'security') goto('/security');
-            else if (role === 'admin') goto('/admin');
-            else goto('/');
+            if (role === 'security' || role === 'admin') goto(`/${role}`); else goto('/');
         } else {
             alert('Wrong OTP');
         }
     }
-    
-    function handleInput(e, i) {
+
+    function handleInput(e, index) {
         const val = e.target.value.replace(/\D/g, '');
-        otpArray[i] = val.slice(-1);
-        if (val && i < 5) document.getElementById(`otp-${i+1}`)?.focus();
+        if (!val) { otpArray[index] = ''; return; }
+        otpArray[index] = val[0];
+        let nextIndex = index + 1;
+        for (let i = 1; i < val.length && nextIndex < otpArray.length; i++, nextIndex++) { otpArray[nextIndex] = val[i]; }
+        if (index < 5 && val.length > 0) document.getElementById(`otp-${index + 1}`)?.focus();
+    }
+    
+    function handleKeydown(e, index) {
+        if (e.key === 'Backspace' && !otpArray[index] && index > 0) document.getElementById(`otp-${index - 1}`)?.focus();
     }
 </script>
 
 <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4 font-kanit">
     <div class="flex w-full max-w-sm flex-col gap-6 rounded-2xl bg-white p-8 text-center shadow-xl">
-        <div class="flex flex-col items-center gap-2">
-            <img src="/logo.svg" alt="Logo" class="h-8" />
+        <div class="mb-2 flex flex-col items-center gap-2">
+            <img src="/logo.svg" alt="Logo" class="mb-2 h-8" />
             <h2 class="text-2xl font-bold">Welcome Back!</h2>
+            <p class="text-sm text-gray-500">Let’s get you back on the map</p>
         </div>
 
         {#if step === 1}
-            <form on:submit|preventDefault={sendOTP} class="flex flex-col gap-4">
-                <input type="email" placeholder="name@cmu.ac.th" class="input input-bordered w-full" bind:value={cmuEmail} />
-                <button class="btn w-full rounded-full bg-[#8F66FF] text-white" disabled={!isEmailValid}>Send OTP</button>
-            </form>
-        {:else}
-             <form on:submit|preventDefault={verifyOTP} class="flex flex-col gap-4">
-                <div class="flex justify-center gap-2">
-                    {#each otpArray as _, i}
-                        <input id="otp-{i}" type="text" class="input input-bordered h-12 w-12 text-center" maxlength="1" bind:value={otpArray[i]} on:input={(e)=>handleInput(e,i)}/>
-                    {/each}
+            <form on:submit|preventDefault={sendOTP} class="flex flex-col gap-6 text-left">
+                <div class="flex flex-col gap-1">
+                    <label for="email" class="font-medium text-gray-700">CMU Account</label>
+                    <input id="email" type="email" placeholder="name@cmu.ac.th" class="input-bordered input w-full" class:input-error={emailError} bind:value={cmuEmail} required />
+                    {#if emailError}<p class="mt-1 text-sm text-error">{emailError}</p>{/if}
                 </div>
-                <button class="btn w-full rounded-full bg-[#8F66FF] text-white" disabled={!isOtpComplete}>Login</button>
+                <button type="submit" class="btn w-full rounded-full text-white" style:background-color={isEmailValid ? '#8F66FF' : ''} style:border-color={isEmailValid ? '#8F66FF' : ''} disabled={!isEmailValid}>Send OTP</button>
+            </form>
+        {/if}
+
+        {#if step === 2}
+            <button class="self-start p-0 font-medium text-gray-700 hover:text-black flex items-center" on:click={() => (step = 1)}>
+                <ChevronLeft class="w-4 h-4 mr-1" /> Back
+            </button>
+            <form on:submit|preventDefault={verifyOTP} class="flex flex-col gap-6 text-left">
+                <div class="flex flex-col gap-2">
+                    <label class="font-medium text-gray-700">One Time Password</label>
+                    <div class="flex justify-center gap-2">
+                        {#each otpArray as digit, i}
+                            <input id={`otp-${i}`} type="text" inputmode="numeric" class="input-bordered input h-12 w-12 text-center text-lg" maxlength="1" bind:value={otpArray[i]} on:input={(e) => handleInput(e, i)} on:keydown={(e) => handleKeydown(e, i)} />
+                        {/each}
+                    </div>
+                </div>
+                <div class="-mt-2 flex items-center justify-between">
+                    <span class="text-sm text-gray-500">{formattedTime}</span>
+                    <button type="button" class="btn p-0 text-sm btn-link text-[#8F66FF]" on:click={() => { startCountdown(); alert('OTP Resent'); }} disabled={countdown > 0}>Resend OTP</button>
+                </div>
+                <button type="submit" class="btn w-full rounded-full text-white" style:background-color={isOtpComplete ? '#8F66FF' : ''} style:border-color={isOtpComplete ? '#8F66FF' : ''} disabled={!isOtpComplete}>LOG IN</button>
             </form>
         {/if}
     </div>

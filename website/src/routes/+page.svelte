@@ -1,250 +1,334 @@
 <script>
-	import { onMount, mount } from 'svelte';
-	import { fade } from 'svelte/transition';
-	import { userStore } from '$lib/stores/userStore.js';
-	import { goto } from '$app/navigation';
+    import { onMount, mount } from 'svelte';
+    import { fade, fly } from 'svelte/transition';
+    import { userStore } from '$lib/stores/userStore.js';
+    import { goto } from '$app/navigation';
+    
+    // Components
+    import BaseMap from '$lib/component/map/BaseMap.svelte';
+    import Navbar from '$lib/component/layout/Navbar.svelte';
+    import CustomMarker from '$lib/component/map/CustomMarker.svelte';
+    import PinCategoryPanel from '$lib/component/map/PinCategoryPanel.svelte';
+    import PinDetailForm from '$lib/component/common/PinDetailForm.svelte';
+    import MobileCategorySheet from '$lib/component/map/MobileCategorySheet.svelte';
+    import SendHelpConfirmModal from '$lib/component/common/SendHelpConfirmModal.svelte';
+    import FilterSidebar from '$lib/component/map/FilterSidebar.svelte';
+    import PointOrLineModal from '$lib/component/common/PointOrLineModal.svelte';
+    
+    // Icons & Config
+    import { Crosshair } from 'lucide-svelte';
+    import { CATEGORY_DISPLAY_NAMES, BLOCKED_MODAL_CONFIG } from '$lib/constant/map-config.js';
+    import { generateUUID } from '$lib/utils/generators.js'; 
+    import { timeAgo } from '$lib/utils/formatting.js';
 
-	import BaseMap from '$lib/component/map/BaseMap.svelte';
-	import Navbar from '$lib/component/layout/Navbar.svelte';
-	import CustomMarker from '$lib/component/map/CustomMarker.svelte';
-	import PinCategoryPanel from '$lib/component/map/PinCategoryPanel.svelte';
-	import PinDetailForm from '$lib/component/common/PinDetailForm.svelte';
-	import MobileCategorySheet from '$lib/component/map/MobileCategorySheet.svelte';
-	import SendHelpConfirmModal from '$lib/component/common/SendHelpConfirmModal.svelte';
-	import FilterSidebar from '$lib/component/map/FilterSidebar.svelte';
-	import PointOrLineModal from '$lib/component/common/PointOrLineModal.svelte';
+    // Map State
+    let mapInstance;
+    let maplibreglInstance;
+    let isMobile = false;
+    let showSplash = true;
 
-	import { Crosshair } from 'lucide-svelte';
-	import { CATEGORY_DISPLAY_NAMES, BLOCKED_MODAL_CONFIG } from '$lib/constant/map-config.js';
-	import { generateUUID } from '$lib/utils/generators.js';
-	import { timeAgo } from '$lib/utils/formatting.js'; 
+    // UI State
+    let selectedCategory = null;
+    let showDetailForm = false;
+    let pinCoordinates = null;
+    let isMobileCategorySheetOpen = false;
+    let showSendHelpModal = false;
+    let isFilterSidebarOpen = false;
+    let isPointOrLineModalOpen = false;
+    let modalConfig = {};
 
-	let mapInstance;
-	let maplibreglInstance;
-	let isMobile = false;
-	let showSplash = true;
+    // ✅ แก้ไข: กำหนดค่าเริ่มต้นของ Filter ให้เป็น true ทั้งหมด
+    let filterState = {
+        accident: true,
+        blocked: true,
+        beware: true,
+        flood: true,
+        send_help: true,
+        traffic_general: true,
+        parking: true,
+        events: true,
+        map_chat: true,
+        lost_found: true
+    };
 
-	// UI State
-	let selectedCategory = null;
-	let showDetailForm = false;
-	let pinCoordinates = null;
-	let isMobileCategorySheetOpen = false;
-	let showSendHelpModal = false;
-	let isFilterSidebarOpen = false;
-	let isPointOrLineModalOpen = false;
-	let modalConfig = {};
+    // Line Drawing State
+    let isDrawingLine = false;
+    let drawingLineCategory = '';
+    let currentLinePoints = [];
+    let lineVertexMarkers = [];
+    let showToast = false;
+    let toastMessage = '';
 
-	// Line Drawing State
-	let isDrawingLine = false;
-	let drawingLineCategory = '';
-	let currentLinePoints = [];
-	let lineVertexMarkers = [];
+    onMount(async () => {
+        isMobile = window.innerWidth < 768;
+        if(!$userStore) { goto('/login'); return; }
+        if ($userStore.role === 'admin') { goto('/admin'); return; }
+        if ($userStore.role === 'security') { goto('/security'); return; }
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        showSplash = false;
+    });
 
-	onMount(async () => {
-		isMobile = window.innerWidth < 768;
-		if (!$userStore) goto('/login');
-		setTimeout(() => (showSplash = false), 2000);
-	});
+    function handleMapLoad({ detail }) {
+        mapInstance = detail.map;
+        maplibreglInstance = detail.maplibregl;
 
-	function handleMapLoad({ detail }) {
-		mapInstance = detail.map;
-		maplibreglInstance = detail.maplibregl;
+        mapInstance.addSource('temp-line-source', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
+        mapInstance.addLayer({ id: 'temp-line-layer', type: 'line', source: 'temp-line-source', paint: { 'line-color': '#F97316', 'line-width': 5, 'line-dasharray': [2, 2] } });
+    }
 
-		// Setup Line Drawing Sources
-		mapInstance.addSource('temp-line-source', {
-			type: 'geojson',
-			data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } }
-		});
-		mapInstance.addLayer({
-			id: 'temp-line-layer',
-			type: 'line',
-			source: 'temp-line-source',
-			paint: { 'line-color': '#F97316', 'line-width': 5, 'line-dasharray': [2, 2] }
-		});
-	}
+    function handleMapClick({ detail: e }) {
+        if (isDrawingLine) {
+            const coords = e.lngLat.toArray();
+            currentLinePoints.push(coords);
+            updateTempLine();
+            
+            const el = document.createElement('div');
+            el.className = 'w-3 h-3 bg-white rounded-full border-2 border-orange-500 shadow-md';
+            const marker = new maplibreglInstance.Marker({ element: el }).setLngLat(coords).addTo(mapInstance);
+            lineVertexMarkers.push(marker);
+        } 
+    }
 
-	function handleMapClick({ detail: e }) {
-		if (isDrawingLine) {
-			const coords = e.lngLat.toArray();
-			currentLinePoints.push(coords);
-			updateTempLine();
+    function findUserLocation() {
+        if (!navigator.geolocation) return alert('Geolocation not supported');
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { longitude, latitude } = pos.coords;
+                new maplibreglInstance.Marker({ color: '#8F66FF' }).setLngLat([longitude, latitude]).addTo(mapInstance);
+                mapInstance.flyTo({ center: [longitude, latitude], zoom: 16 });
+            },
+            () => alert('Could not get location')
+        );
+    }
 
-			const el = document.createElement('div');
-			el.className = 'w-3 h-3 bg-white rounded-full border-2 border-orange-500 shadow-md';
-			const marker = new maplibreglInstance.Marker({ element: el })
-				.setLngLat(coords)
-				.addTo(mapInstance);
-			lineVertexMarkers.push(marker);
-		} else if (selectedCategory && !showDetailForm) {
-			pinCoordinates = e.lngLat;
-			showDetailForm = true;
-		}
-	}
+    function handleNextStep() {
+        if (mapInstance) {
+            const center = mapInstance.getCenter();
+            pinCoordinates = { lng: center.lng, lat: center.lat };
+            showDetailForm = true;
+        }
+    }
 
-	function updateTempLine() {
-		mapInstance
-			.getSource('temp-line-source')
-			.setData({
-				type: 'Feature',
-				geometry: { type: 'LineString', coordinates: currentLinePoints }
-			});
-	}
+    function updateTempLine() {
+        mapInstance.getSource('temp-line-source').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: currentLinePoints } });
+    }
 
-	function addPinToMap(data) {
-		const el = document.createElement('div');
-		mount(CustomMarker, { target: el, props: { category: data.category } });
+    function addPermanentLineToMap(points, category) {
+        const lineId = generateUUID();
+        const lineColor = category.includes('blocked') ? '#F97316' : '#EF4444';
 
-		const popupHTML = `<div class="p-2 font-kanit"><h3 class="font-bold">${data.title}</h3><p class="text-sm">${data.description}</p></div>`;
-		const popup = new maplibreglInstance.Popup({ offset: 25, className: 'cmu-popup' }).setHTML(
-			popupHTML
-		);
+        mapInstance.addSource(`perm-line-source-${lineId}`, {
+            type: 'geojson',
+            data: { type: 'Feature', geometry: { type: 'LineString', coordinates: points } }
+        });
 
-		new maplibreglInstance.Marker({ element: el, anchor: 'bottom' })
-			.setLngLat([data.coordinates.lng, data.coordinates.lat])
-			.setPopup(popup)
-			.addTo(mapInstance);
-	}
+        mapInstance.addLayer({
+            id: `perm-line-layer-${lineId}`,
+            type: 'line',
+            source: `perm-line-source-${lineId}`,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': lineColor, 'line-width': 6, 'line-opacity': 0.8 }
+        });
+    }
 
-	function handlePinSubmit(e) {
-		addPinToMap(e.detail);
-		showDetailForm = false;
-		selectedCategory = null;
-	}
+    function addPinToMap(data) {
+        const el = document.createElement('div');
+        mount(CustomMarker, { target: el, props: { category: data.category } });
+        
+        const imageHTML = data.photoPreviewUrl 
+            ? `<div style="width: 100%; height: 140px; background-image: url('${data.photoPreviewUrl}'); background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 12px;"></div>` 
+            : '';
 
-	function handleCategorySelect(e) {
-		const category = e.detail;
-		if (category === 'blocked' || category === 'traffic_general') {
-			modalConfig = BLOCKED_MODAL_CONFIG; // ใช้ค่าคงที่ที่แยกไว้
-			isPointOrLineModalOpen = true;
-		} else {
-			selectedCategory = category;
-		}
-	}
+        const popupHTML = `
+            <div style="font-family: 'Kanit', sans-serif; min-width: 220px; padding: 4px;">
+                ${imageHTML}
+                <div style="margin-bottom: 12px;">
+                    <h3 style="font-size: 18px; font-weight: 700; color: #000; margin: 0; line-height: 1.3;">${data.title}</h3>
+                    ${data.description ? `<p style="font-size: 13px; color: #6B7280; margin-top: 4px;">${data.description}</p>` : ''}
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div style="font-size: 12px; color: #6B7280; line-height: 1.4;">
+                        <span>report by</span><br>
+                        <span style="color: #374151; font-weight: 500;">${data.reporter || 'anonymous'}</span><br>
+                        <span>${timeAgo(data.timestamp)}</span>
+                    </div>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <button style="background: none; border: none; cursor: pointer; padding: 0; display: flex;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button>
+                            <span style="font-weight: 600; font-size: 14px; color: #374151;">${data.likes || 0}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <button style="background: none; border: none; cursor: pointer; padding: 0; display: flex;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: scaleY(-1);"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button>
+                            <span style="font-weight: 600; font-size: 14px; color: #374151;">${data.dislikes || 0}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
 
-	function startLineDrawing() {
-		isPointOrLineModalOpen = false;
-		isDrawingLine = true;
-		drawingLineCategory = 'blocked-line';
-		currentLinePoints = [];
-		mapInstance.getCanvas().style.cursor = 'crosshair';
-	}
+        const popup = new maplibreglInstance.Popup({ offset: 35, className: 'cmu-popup', closeButton: false, maxWidth: '300px' }).setHTML(popupHTML);
+        new maplibreglInstance.Marker({ element: el, anchor: 'bottom' }).setLngLat([data.coordinates.lng, data.coordinates.lat]).setPopup(popup).addTo(mapInstance);
+    }
 
-	function cancelAll() {
-		selectedCategory = null;
-		showDetailForm = false;
-		isDrawingLine = false;
-		currentLinePoints = [];
-		lineVertexMarkers.forEach((m) => m.remove());
-		lineVertexMarkers = [];
-		if (mapInstance) {
-			mapInstance.getCanvas().style.cursor = '';
-			updateTempLine();
-		}
-	}
+    function handlePinSubmit(e) {
+        addPinToMap(e.detail);
+        showDetailForm = false;
+        selectedCategory = null;
+        toastMessage = 'Post success';
+        showToast = true;
+        setTimeout(() => showToast = false, 3000);
+    }
 
-	function finishLineDrawing() {
-		// Logic จบการวาดเส้น (Mock)
-		addPinToMap({
-			category: 'blocked',
-			coordinates: { lng: currentLinePoints[0][0], lat: currentLinePoints[0][1] },
-			title: 'Road Closed',
-			description: 'Line report'
-		});
-		cancelAll();
-	}
+    function handleCategorySelect(e) {
+        const category = e.detail;
+        if (category === 'blocked') {
+            modalConfig = BLOCKED_MODAL_CONFIG; 
+            isPointOrLineModalOpen = true;
+        } 
+        else if (category === 'traffic_general') {
+            isPointOrLineModalOpen = false; 
+            isDrawingLine = true;
+            drawingLineCategory = 'traffic_general-line';
+            currentLinePoints = [];
+            mapInstance.getCanvas().style.cursor = 'crosshair';
+            if (mapInstance.getLayer('temp-line-layer')) {
+                mapInstance.setPaintProperty('temp-line-layer', 'line-color', '#EF4444');
+            }
+        } 
+        else {
+            selectedCategory = category;
+        }
+    }
+
+    function startLineDrawing() {
+        isPointOrLineModalOpen = false;
+        isDrawingLine = true;
+        drawingLineCategory = 'blocked-line';
+        currentLinePoints = [];
+        mapInstance.getCanvas().style.cursor = 'crosshair';
+        mapInstance.setPaintProperty('temp-line-layer', 'line-color', '#F97316');
+    }
+
+    function cancelAll() {
+        selectedCategory = null;
+        showDetailForm = false;
+        isDrawingLine = false;
+        currentLinePoints = [];
+        lineVertexMarkers.forEach(m => m.remove());
+        lineVertexMarkers = [];
+        if(mapInstance) {
+            mapInstance.getCanvas().style.cursor = '';
+            updateTempLine();
+        }
+    }
+
+    function finishLineDrawing() {
+        if (currentLinePoints.length < 2) {
+            alert("Please click on the map to draw at least 2 points.");
+            return;
+        }
+        addPermanentLineToMap(currentLinePoints, drawingLineCategory);
+        addPinToMap({
+             category: drawingLineCategory.includes('traffic') ? 'traffic_general' : 'blocked',
+             coordinates: { lng: currentLinePoints[0][0], lat: currentLinePoints[0][1] },
+             title: drawingLineCategory.includes('traffic') ? 'Traffic Jam' : 'Road Off / Closed',
+             description: drawingLineCategory.includes('traffic') ? 'Heavy traffic reported.' : 'Reported road closure area.',
+             reporter: $userStore?.name || 'Anonymous',
+             timestamp: new Date().toISOString(),
+             likes: 0, dislikes: 0
+        });
+        toastMessage = 'Route reported successfully';
+        showToast = true;
+        setTimeout(() => showToast = false, 3000);
+        cancelAll();
+    }
 </script>
 
-<div class="font-kanit relative h-screen w-full overflow-hidden bg-white">
-	{#if showSplash}
-		<div class="fixed inset-0 z-[100] flex items-center justify-center bg-white" out:fade>
-			<h1 class="text-4xl font-bold text-[#8F66FF]">ลูกช้าง Maps</h1>
-		</div>
-	{/if}
+<svelte:head>
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+</svelte:head>
 
-	<BaseMap on:load={handleMapLoad} on:click={handleMapClick} />
+<div class="relative h-screen w-full font-kanit overflow-hidden bg-white">
+    
+    {#if showSplash}
+        <div class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white" out:fade={{ duration: 500 }}>
+            <lottie-player src="/loading.json" background="transparent" speed="1" style="width: 450px; height: 450px;" loop autoplay></lottie-player>
+            <div class="relative z-10 -mt-10 text-center">
+                <h1 class="text-4xl font-bold tracking-wide text-[#8F66FF]">ลูกช้าง Maps</h1>
+                <p class="mt-2 text-base font-light tracking-widest text-gray-400">COMMUNITY SAFETY PLATFORM</p>
+            </div>
+        </div>
+    {/if}
 
-	{#if !selectedCategory && !isDrawingLine}
-		<Navbar on:toggleSidebar={() => (isFilterSidebarOpen = true)} />
-	{/if}
+    <BaseMap on:load={handleMapLoad} on:click={handleMapClick} />
 
-	{#if !selectedCategory && !isDrawingLine}
-		{#if isMobile}
-			<button
-				class="absolute right-4 bottom-8 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-[#8F66FF] text-3xl text-white shadow-xl"
-				on:click={() => (isMobileCategorySheetOpen = true)}>+</button
-			>
-		{:else}
-			<PinCategoryPanel
-				on:select={(e) => (selectedCategory = e.detail)}
-				on:sendHelp={() => (showSendHelpModal = true)}
-				on:showOptions={handleCategorySelect}
-			/>
-		{/if}
-	{/if}
+    {#if !showSplash}
+        {#if !selectedCategory && !isDrawingLine}
+            <Navbar on:toggleSidebar={() => isFilterSidebarOpen = true} />
+        {/if}
 
-	{#if selectedCategory || isDrawingLine}
-		<div class="absolute right-0 bottom-8 left-0 z-50 flex justify-center gap-4 px-4">
-			<button class="btn rounded-full bg-white px-8 text-black shadow-lg" on:click={cancelAll}
-				>Cancel</button
-			>
-			{#if isDrawingLine}
-				<button
-					class="btn rounded-full bg-[#8F66FF] px-8 text-white shadow-lg"
-					on:click={finishLineDrawing}>Finish</button
-				>
-			{:else if !showDetailForm}
-				<button
-					class="btn rounded-full bg-[#8F66FF] px-8 text-white shadow-lg"
-					on:click={() => (showDetailForm = true)}>Next</button
-				>
-			{/if}
-		</div>
-		<div
-			class="pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
-		>
-			<Crosshair class="h-8 w-8 text-red-500" />
-		</div>
-	{/if}
+        {#if !selectedCategory && !isDrawingLine}
+            {#if isMobile}
+                <button class="absolute bottom-13 right-4 z-40 bg-[#8F66FF] text-white w-16 h-16 rounded-full shadow-xl text-3xl flex items-center justify-center transition-transform active:scale-95" on:click={() => isMobileCategorySheetOpen = true}>+</button>
+            {:else}
+                <PinCategoryPanel on:select={(e) => selectedCategory = e.detail} on:sendHelp={() => showSendHelpModal = true} on:showOptions={handleCategorySelect} />
+            {/if}
+        {/if}
 
-	{#if showDetailForm}
-		<PinDetailForm
-			{isMobile}
-			category={selectedCategory}
-			coordinates={pinCoordinates}
-			on:close={() => (showDetailForm = false)}
-			on:submit={handlePinSubmit}
-		/>
-	{/if}
-	{#if isMobileCategorySheetOpen}
-		<MobileCategorySheet
-			on:close={() => (isMobileCategorySheetOpen = false)}
-			on:select={(e) => {
-				isMobileCategorySheetOpen = false;
-				selectedCategory = e.detail;
-			}}
-			on:showOptions={handleCategorySelect}
-		/>
-	{/if}
-	{#if showSendHelpModal}
-		<SendHelpConfirmModal
-			on:close={() => (showSendHelpModal = false)}
-			on:confirm={() => {
-				showSendHelpModal = false;
-				alert('Alert Sent!');
-			}}
-		/>
-	{/if}
-	{#if isFilterSidebarOpen}
-		<FilterSidebar filters={{}} on:close={() => (isFilterSidebarOpen = false)} />
-	{/if}
-	{#if isPointOrLineModalOpen}
-		<PointOrLineModal
-			on:close={() => (isPointOrLineModalOpen = false)}
-			on:selectPoint={() => {
-				isPointOrLineModalOpen = false;
-				selectedCategory = 'blocked';
-			}}
-			on:selectLine={startLineDrawing}
-		/>
-	{/if}
+        {#if selectedCategory && !showDetailForm && !isDrawingLine}
+            <div class="pointer-events-none absolute top-24 left-0 right-0 z-30 flex justify-center" in:fly={{ y: -20, duration: 300 }}>
+                <div class="bg-white px-6 py-3 rounded-full shadow-lg border border-gray-100 flex items-center gap-2">
+                    <span class="text-gray-600 font-medium text-sm">Create post:</span>
+                    <span class="font-bold text-[#8F66FF] text-sm uppercase">{CATEGORY_DISPLAY_NAMES[selectedCategory]}</span>
+                </div>
+            </div>
+            <div class="pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-full pb-1 drop-shadow-xl">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C7.58 0 4 3.58 4 8C4 13.5 12 24 12 24C12 24 20 13.5 20 8C20 3.58 16.42 0 12 0Z" fill="#EF4444"/><circle cx="12" cy="8" r="3.5" fill="white"/></svg>
+            </div>
+            <div class="absolute bottom-8 left-0 right-0 z-50 flex justify-center gap-4 px-4">
+                <button class="btn rounded-full bg-white shadow-lg px-8 text-gray-700 border-gray-200 hover:bg-gray-50 w-32 font-bold" on:click={cancelAll}>Cancel</button>
+                <button class="btn rounded-full bg-[#8F66FF] text-white shadow-lg px-8 hover:bg-[#7a52e0] w-32 font-bold border-none" on:click={handleNextStep}>Next</button>
+            </div>
+        {/if}
+
+        {#if isDrawingLine}
+            <div class="pointer-events-none absolute top-24 left-0 right-0 z-30 flex justify-center">
+                <div class="bg-white px-6 py-3 rounded-full shadow-lg border border-gray-100">
+                    <span class="font-bold {drawingLineCategory.includes('traffic') ? 'text-red-600' : 'text-orange-600'} text-sm">
+                        Drawing {drawingLineCategory.includes('traffic') ? 'Traffic Jam' : 'Road Off'} (Tap map to add points)
+                    </span>
+                </div>
+            </div>
+            <div class="absolute bottom-8 left-0 right-0 z-50 flex justify-center gap-4 px-4">
+                <button class="btn rounded-full bg-white shadow-lg px-8 text-black border-gray-200" on:click={cancelAll}>Cancel</button>
+                <button class="btn rounded-full bg-[#8F66FF] text-white shadow-lg px-8 hover:bg-[#7a52e0]" on:click={finishLineDrawing}>Finish</button>
+            </div>
+        {/if}
+
+        {#if showToast}
+            <div class="absolute z-50 top-24 left-0 right-0 flex justify-center pointer-events-none">
+                <div class="bg-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 border border-gray-200 animate-bounce">
+                    <span class="font-bold text-green-600">{toastMessage}</span>
+                </div>
+            </div>
+        {/if}
+
+        <button class="absolute z-40 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-100 active:scale-95 {isMobile ? 'h-12 w-12 bottom-32 right-4' : 'h-10 w-10 bottom-38 right-4'}" on:click={findUserLocation} title="Find my location">
+            <Crosshair class="w-6 h-6 text-gray-600" />
+        </button>
+
+        {#if showDetailForm} <PinDetailForm {isMobile} category={selectedCategory} coordinates={pinCoordinates} on:close={() => showDetailForm=false} on:submit={handlePinSubmit} /> {/if}
+        {#if isMobileCategorySheetOpen} <MobileCategorySheet on:close={() => isMobileCategorySheetOpen = false} on:select={(e) => { isMobileCategorySheetOpen=false; selectedCategory=e.detail; }} on:showOptions={handleCategorySelect} /> {/if}
+        {#if showSendHelpModal} <SendHelpConfirmModal on:close={() => showSendHelpModal = false} on:confirm={() => { showSendHelpModal=false; alert('Alert Sent!'); }} /> {/if}
+        {#if isFilterSidebarOpen} <FilterSidebar bind:filters={filterState} on:close={() => isFilterSidebarOpen = false} /> {/if}
+        {#if isPointOrLineModalOpen} <PointOrLineModal on:close={() => isPointOrLineModalOpen = false} on:selectPoint={() => { isPointOrLineModalOpen=false; selectedCategory='blocked'; }} on:selectLine={startLineDrawing} /> {/if}
+        
+        <img src="/logo.svg" alt="Logo" class="absolute z-30 h-8 bottom-4 left-4" />
+    {/if}
 </div>
+
+<style>
+    :global(.cmu-popup .maplibregl-popup-content) { border-radius: 12px; padding: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    :global(.cmu-popup .maplibregl-popup-tip) { display: none; }
+    .font-kanit { font-family: 'Kanit', sans-serif; }
+</style>

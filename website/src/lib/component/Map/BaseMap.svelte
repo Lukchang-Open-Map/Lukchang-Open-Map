@@ -9,6 +9,7 @@
 
     let mapContainer;
     let map;
+    let resizeObserver; // เพิ่มตัวแปรเก็บ Observer
     const dispatch = createEventDispatcher();
 
     onMount(() => {
@@ -33,24 +34,40 @@
                     maxzoom: 19
                 }]
             },
-            center: center,
-            zoom: zoom,
-            maxBounds: [[98.93, 18.78], [98.97, 18.82]]
+			center: [98.952, 18.8],
+			zoom: 15,
+			minZoom: 14,
+			maxZoom: 18
         });
 
-        // Add Navigation Control only if not mobile (optional logic can be handled by parent)
         if (window.innerWidth >= 768 && interactive) {
              map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
         }
 
         map.on('load', () => {
             dispatch('load', { map, maplibregl });
+            // สั่ง resize ทีหนึ่งตอนโหลดเสร็จ เพื่อความชัวร์
+            map.resize();
         });
 
         map.on('click', (e) => dispatch('click', e));
+
+        // ✅ เพิ่มส่วนนี้: สร้าง ResizeObserver เพื่อดักจับการเปลี่ยนแปลงขนาด
+        resizeObserver = new ResizeObserver(() => {
+            if (map) {
+                map.resize(); // สั่งให้แมพคำนวณขนาดใหม่ทันที
+            }
+        });
+        
+        // เริ่มเฝ้าดู mapContainer
+        resizeObserver.observe(mapContainer);
     });
 
     onDestroy(() => {
+        // ✅ อย่าลืมทำลาย Observer เมื่อปิดหน้า
+        if (resizeObserver) {
+            resizeObserver.disconnect();
+        }
         if (map) map.remove();
     });
 </script>
