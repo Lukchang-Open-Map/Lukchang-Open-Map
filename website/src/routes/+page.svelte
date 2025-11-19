@@ -5,14 +5,14 @@
     import { goto } from '$app/navigation';
     
     // Components
-    import BaseMap from '$lib/component/Map/BaseMap.svelte';
+    import BaseMap from '$lib/component/map/BaseMap.svelte';
     import Navbar from '$lib/component/layout/Navbar.svelte';
-    import CustomMarker from '$lib/component/Map/CustomMarker.svelte';
-    import PinCategoryPanel from '$lib/component/Map/PinCategoryPanel.svelte';
+    import CustomMarker from '$lib/component/map/CustomMarker.svelte';
+    import PinCategoryPanel from '$lib/component/map/PinCategoryPanel.svelte';
     import PinDetailForm from '$lib/component/common/PinDetailForm.svelte';
-    import MobileCategorySheet from '$lib/component/Map/MobileCategorySheet.svelte';
+    import MobileCategorySheet from '$lib/component/map/MobileCategorySheet.svelte';
     import SendHelpConfirmModal from '$lib/component/common/SendHelpConfirmModal.svelte';
-    import FilterSidebar from '$lib/component/Map/FilterSidebar.svelte';
+    import FilterSidebar from '$lib/component/map/FilterSidebar.svelte';
     import PointOrLineModal from '$lib/component/common/PointOrLineModal.svelte';
     
     // Icons & Config
@@ -20,14 +20,13 @@
     import { CATEGORY_DISPLAY_NAMES, BLOCKED_MODAL_CONFIG } from '$lib/constant/map-config.js';
     import { generateUUID } from '$lib/utils/generators.js'; 
     import { timeAgo } from '$lib/utils/formatting.js';
-    
-    // Import Logic การกด Like/Dislike
     import { initializeMapInteractions } from '$lib/utils/map-interactions.js';
 
     // Map State
     let mapInstance;
     let maplibreglInstance;
     let isMobile = false;
+
     let showSplash = true;
 
     // UI State
@@ -56,11 +55,12 @@
 
     onMount(async () => {
         initializeMapInteractions();
-
         isMobile = window.innerWidth < 768;
+
         if(!$userStore) { goto('/login'); return; }
         if ($userStore.role === 'admin') { goto('/admin'); return; }
         if ($userStore.role === 'security') { goto('/security'); return; }
+
         await new Promise((resolve) => setTimeout(resolve, 3000));
         showSplash = false;
     });
@@ -68,7 +68,6 @@
     function handleMapLoad({ detail }) {
         mapInstance = detail.map;
         maplibreglInstance = detail.maplibregl;
-
         mapInstance.addSource('temp-line-source', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
         mapInstance.addLayer({ id: 'temp-line-layer', type: 'line', source: 'temp-line-source', paint: { 'line-color': '#F97316', 'line-width': 5, 'line-dasharray': [2, 2] } });
     }
@@ -112,79 +111,43 @@
     function addPermanentLineToMap(points, category) {
         const lineId = generateUUID();
         const lineColor = category.includes('blocked') ? '#F97316' : '#EF4444';
-
-        mapInstance.addSource(`perm-line-source-${lineId}`, {
-            type: 'geojson',
-            data: { type: 'Feature', geometry: { type: 'LineString', coordinates: points } }
-        });
-
-        mapInstance.addLayer({
-            id: `perm-line-layer-${lineId}`,
-            type: 'line',
-            source: `perm-line-source-${lineId}`,
-            layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': lineColor, 'line-width': 6, 'line-opacity': 0.8 }
-        });
+        mapInstance.addSource(`perm-line-source-${lineId}`, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: points } } });
+        mapInstance.addLayer({ id: `perm-line-layer-${lineId}`, type: 'line', source: `perm-line-source-${lineId}`, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': lineColor, 'line-width': 6, 'line-opacity': 0.8 } });
     }
 
     function addPinToMap(data) {
         const el = document.createElement('div');
         mount(CustomMarker, { target: el, props: { category: data.category } });
-        
         const pinId = data.id || generateUUID();
         const likes = data.likes || 0;
         const dislikes = data.dislikes || 0;
-
-        const imageHTML = data.photoPreviewUrl 
-            ? `<div style="width: 100%; height: 140px; background-image: url('${data.photoPreviewUrl}'); background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 12px;"></div>` 
-            : '';
-
+        const imageHTML = data.photoPreviewUrl ? `<div style="width: 100%; height: 140px; background-image: url('${data.photoPreviewUrl}'); background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 12px;"></div>` : '';
         const popupHTML = `
             <div style="font-family: 'Kanit', sans-serif; min-width: 200px; padding: 4px;">
                 ${imageHTML}
-                <h3 style="font-size: 20px; font-weight: 800; color: #000; margin: 0 0 12px 0; line-height: 1.2;">
-                    ${data.title}
-                </h3>
+                <h3 style="font-size: 20px; font-weight: 900; color: #000; margin: 0 0 12px 0; line-height: 1.2;">${data.title}</h3>
                 <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-                    <div style="font-size: 12px; color: #6B7280; line-height: 1.4;">
-                        <span style="color: #6B7280;">report by</span><br>
-                        <span style="color: #1F2937; font-weight: 700; font-size: 13px;">${data.reporter || 'anonymous'}</span><br>
-                        <span style="color: #6B7280;">${timeAgo(data.timestamp)}</span>
+                    <div style="font-size: 13px; line-height: 1.4; color: #6B7280;">
+                        <span>report by</span><br><span style="color: #1F2937; font-weight: 700;">${data.reporter || 'anonymous'}</span><br><span>${timeAgo(data.timestamp)}</span>
                     </div>
                     <div style="display: flex; gap: 16px; align-items: center;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <button id="like-button-${pinId}" onclick="window.handleLike('${pinId}')" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center;">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
-                            </button>
-                            <span id="like-count-${pinId}" style="font-weight: 700; font-size: 16px; color: #374151;">${likes}</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <button id="dislike-button-${pinId}" onclick="window.handleDislike('${pinId}')" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center;">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: scaleY(-1);"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
-                            </button>
-                            <span id="dislike-count-${pinId}" style="font-weight: 700; font-size: 16px; color: #374151;">${dislikes}</span>
-                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;"><button id="like-button-${pinId}" onclick="window.handleLike('${pinId}')" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><span id="like-count-${pinId}" style="font-weight: 800; font-size: 16px; color: #374151;">${likes}</span></div>
+                        <div style="display: flex; align-items: center; gap: 6px;"><button id="dislike-button-${pinId}" onclick="window.handleDislike('${pinId}')" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: scaleY(-1);"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><span id="dislike-count-${pinId}" style="font-weight: 800; font-size: 16px; color: #374151;">${dislikes}</span></div>
                     </div>
                 </div>
-            </div>
-        `;
-
-        const popup = new maplibreglInstance.Popup({ offset: 35, className: 'cmu-popup', closeButton: false, maxWidth: '320px' }).setHTML(popupHTML);
+            </div>`;
+        const popup = new maplibreglInstance.Popup({ offset: 35, className: 'cmu-popup', closeButton: false, maxWidth: '300px' }).setHTML(popupHTML);
         new maplibreglInstance.Marker({ element: el, anchor: 'bottom' }).setLngLat([data.coordinates.lng, data.coordinates.lat]).setPopup(popup).addTo(mapInstance);
     }
 
     function handlePinSubmit(e) {
         const formData = e.detail;
-        
-        // เช็คว่าถ้าเป็น Public ถึงจะปักหมุดลง Map
         if (formData.visibility === 'public') {
             addPinToMap(formData);
             toastMessage = 'Post published on map';
         } else {
-            // ถ้าส่งให้ Staff Only ไม่ต้องปักหมุด
             toastMessage = 'Report sent to security staff';
         }
-
         showDetailForm = false;
         selectedCategory = null;
         showToast = true;
@@ -193,6 +156,14 @@
 
     function handleCategorySelect(e) {
         const category = e.detail;
+        
+        isMobileCategorySheetOpen = false; 
+
+        if (category === 'send_help') {
+            showSendHelpModal = true; 
+            return; 
+        }
+
         if (category === 'blocked') {
             modalConfig = BLOCKED_MODAL_CONFIG; 
             isPointOrLineModalOpen = true;
@@ -202,9 +173,11 @@
             isDrawingLine = true;
             drawingLineCategory = 'traffic_general-line';
             currentLinePoints = [];
-            mapInstance.getCanvas().style.cursor = 'crosshair';
-            if (mapInstance.getLayer('temp-line-layer')) {
-                mapInstance.setPaintProperty('temp-line-layer', 'line-color', '#EF4444');
+            if (mapInstance) {
+                 mapInstance.getCanvas().style.cursor = 'crosshair';
+                 if (mapInstance.getLayer('temp-line-layer')) {
+                    mapInstance.setPaintProperty('temp-line-layer', 'line-color', '#EF4444');
+                }
             }
         } 
         else {
@@ -235,10 +208,7 @@
     }
 
     function finishLineDrawing() {
-        if (currentLinePoints.length < 2) {
-            alert("Please click on the map to draw at least 2 points.");
-            return;
-        }
+        if (currentLinePoints.length < 2) { alert("Please click on the map to draw at least 2 points."); return; }
         addPermanentLineToMap(currentLinePoints, drawingLineCategory);
         addPinToMap({
              category: drawingLineCategory.includes('traffic') ? 'traffic_general' : 'blocked',
@@ -330,8 +300,27 @@
         </button>
 
         {#if showDetailForm} <PinDetailForm {isMobile} category={selectedCategory} coordinates={pinCoordinates} on:close={() => showDetailForm=false} on:submit={handlePinSubmit} /> {/if}
-        {#if isMobileCategorySheetOpen} <MobileCategorySheet on:close={() => isMobileCategorySheetOpen = false} on:select={(e) => { isMobileCategorySheetOpen=false; selectedCategory=e.detail; }} on:showOptions={handleCategorySelect} /> {/if}
-        {#if showSendHelpModal} <SendHelpConfirmModal on:close={() => showSendHelpModal = false} on:confirm={() => { showSendHelpModal=false; alert('Alert Sent!'); }} /> {/if}
+        
+        {#if isMobileCategorySheetOpen} 
+            <MobileCategorySheet 
+                on:close={() => isMobileCategorySheetOpen = false} 
+                on:select={handleCategorySelect} 
+                on:showOptions={handleCategorySelect} 
+            /> 
+        {/if}
+
+        {#if showSendHelpModal} 
+            <SendHelpConfirmModal 
+                on:close={() => showSendHelpModal = false} 
+                on:confirm={() => { 
+                    showSendHelpModal=false; 
+                    toastMessage = 'Emergency alert sent to security!'; 
+                    showToast = true; 
+                    setTimeout(() => showToast = false, 3000); 
+                }} 
+            /> 
+        {/if}
+
         {#if isFilterSidebarOpen} <FilterSidebar bind:filters={filterState} on:close={() => isFilterSidebarOpen = false} /> {/if}
         {#if isPointOrLineModalOpen} <PointOrLineModal on:close={() => isPointOrLineModalOpen = false} on:selectPoint={() => { isPointOrLineModalOpen=false; selectedCategory='blocked'; }} on:selectLine={startLineDrawing} /> {/if}
         
@@ -340,7 +329,7 @@
 </div>
 
 <style>
-    :global(.cmu-popup .maplibregl-popup-content) { border-radius: 12px; padding: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    :global(.cmu-popup .maplibregl-popup-tip) { display: none; }
+    :global(.cmu-popup .maplibregl-popup-content) { border-radius: 20px !important; padding: 16px !important; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important; border: none !important; }
+    :global(.cmu-popup .maplibregl-popup-tip) { display: none !important; }
     .font-kanit { font-family: 'Kanit', sans-serif; }
 </style>
