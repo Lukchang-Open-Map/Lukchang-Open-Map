@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
-@plugin "daisyui";
+@plugin "daisyui" {
+    themes: light --default;
+}
 @import "maplibre-gl/dist/maplibre-gl.css";
+

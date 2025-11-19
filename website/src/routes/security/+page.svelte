@@ -1,7 +1,7 @@
 <script>
     import { onMount, mount } from 'svelte';
-    import BaseMap from '$lib/component/map/BaseMap.svelte';
-    import CustomMarker from '$lib/component/map/CustomMarker.svelte';
+    import BaseMap from '$lib/component/Map/BaseMap.svelte';
+    import CustomMarker from '$lib/component/Map/CustomMarker.svelte';
     import Navbar from '$lib/component/layout/Navbar.svelte';
     import { CATEGORY_STYLES, CATEGORY_DISPLAY_NAMES } from '$lib/constant/map-config.js';
     import { timeAgo } from '$lib/utils/formatting.js';

@@ -5,14 +5,14 @@
     import { goto } from '$app/navigation';
     
     // Components
-    import BaseMap from '$lib/component/map/BaseMap.svelte';
+    import BaseMap from '$lib/component/Map/BaseMap.svelte';
     import Navbar from '$lib/component/layout/Navbar.svelte';
-    import CustomMarker from '$lib/component/map/CustomMarker.svelte';
-    import PinCategoryPanel from '$lib/component/map/PinCategoryPanel.svelte';
+    import CustomMarker from '$lib/component/Map/CustomMarker.svelte';
+    import PinCategoryPanel from '$lib/component/Map/PinCategoryPanel.svelte';
     import PinDetailForm from '$lib/component/common/PinDetailForm.svelte';
-    import MobileCategorySheet from '$lib/component/map/MobileCategorySheet.svelte';
+    import MobileCategorySheet from '$lib/component/Map/MobileCategorySheet.svelte';
     import SendHelpConfirmModal from '$lib/component/common/SendHelpConfirmModal.svelte';
-    import FilterSidebar from '$lib/component/map/FilterSidebar.svelte';
+    import FilterSidebar from '$lib/component/Map/FilterSidebar.svelte';
     import PointOrLineModal from '$lib/component/common/PointOrLineModal.svelte';
     
     // Icons & Config
