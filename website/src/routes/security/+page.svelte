@@ -6,8 +6,8 @@
     import { CATEGORY_STYLES, CATEGORY_DISPLAY_NAMES } from '$lib/constant/map-config.js';
     import { timeAgo } from '$lib/utils/formatting.js';
     import { Shield, CheckCircle, ChevronLeft, HelpCircle } from 'lucide-svelte';
-    
-    // ✅ Import ตัวช่วยที่เราเพิ่งสร้าง
+
+    // ✅ Import Logic Interaction
     import { initializeMapInteractions } from '$lib/utils/map-interactions.js';
 
     let mapInstance;
@@ -18,6 +18,17 @@
     let showNotification = false;
     let notificationMessage = '';
 
+    // ✅ เพิ่มตัวแปรเก็บ Marker เพื่อให้ลบออกได้ภายหลัง
+    let markers = {}; 
+    
+    // Filter State
+    let activeFilter = 'All'; 
+    const filters = ['All', 'Accident/Hazard', 'Blocked', 'Flood'];
+    
+    $: filteredIncidents = activeFilter === 'All' 
+        ? incidents 
+        : incidents.filter(inc => (CATEGORY_DISPLAY_NAMES[inc.category] || inc.category) === activeFilter);
+
     onMount(() => {
         initializeMapInteractions();
 
@@ -26,24 +37,32 @@
             { 
                 id: 'inc_001', 
                 category: 'accident', 
-                title: 'Accident at Main Gate', 
-                description: 'Motorcycle crash, minor injuries.', 
+                title: 'รถเครื่องชนกันแยกทางฝ่ายคืบจ้าว', 
+                description: 'มีผู้บาดเจ็บ ต้องการความช่วยเหลือด่วน', 
                 coordinates: { lng: 98.9545, lat: 18.807 }, 
-                timestamp: new Date().toISOString(), 
+                timestamp: new Date(Date.now() - 60000).toISOString(), 
                 reporter: 'Anonymous',
-                likes: 5,
-                dislikes: 0
+                likes: 5, dislikes: 0
             },
             { 
                 id: 'inc_002', 
-                category: 'flood', 
-                title: 'Flooding near Ang Kaew', 
-                description: 'Water level rising, blocking pathway.', 
-                coordinates: { lng: 98.9504, lat: 18.8052 }, 
-                timestamp: new Date(Date.now() - 3600000).toISOString(), 
-                reporter: 'Staff A',
-                likes: 12,
-                dislikes: 1
+                category: 'send_help', 
+                title: 'ต้องการความช่วยเหลือ', 
+                description: 'เจอคนบาดเจ็บที่ลานจอดรถ', 
+                coordinates: { lng: 98.9478, lat: 18.8018 }, 
+                timestamp: new Date(Date.now() - 120000).toISOString(),
+                reporter: 'Somchai L.',
+                likes: 2, dislikes: 1
+            },
+            { 
+                id: 'inc_003', 
+                category: 'blocked', 
+                title: 'ต้นไม้ล้ม', 
+                description: 'ต้นไม้ล้มขวางทาง หน้าคณะวิศวกรรมศาสตร์', 
+                coordinates: { lng: 98.9490, lat: 18.8015 }, 
+                timestamp: new Date(Date.now() - 300000).toISOString(),
+                reporter: 'Staff User',
+                likes: 10, dislikes: 0
             }
         ];
     });
@@ -51,17 +70,21 @@
     function handleMapLoad({ detail }) {
         mapInstance = detail.map;
         maplibreglInstance = detail.maplibregl;
-        
-        incidents.forEach(inc => {
-            addMarker(inc);
-        });
+        updateMarkers();
+    }
+
+    function updateMarkers() {
+        if (!mapInstance || !maplibreglInstance) return;
+        incidents.forEach(inc => addMarker(inc));
     }
 
     function addMarker(incident) {
+        // ถ้ามี marker นี้อยู่แล้วไม่ต้องสร้างใหม่
+        if (markers[incident.id]) return;
+
         const el = document.createElement('div');
         mount(CustomMarker, { target: el, props: { category: incident.category } });
 
-        // ใช้ HTML Structure แบบเดิมเพื่อให้ Class ID ตรงกับใน map-interactions.js
         const popupHTML = `
             <div style="font-family: 'Kanit', sans-serif; min-width: 220px; padding: 4px;">
                 <div style="margin-bottom: 8px;">
@@ -71,30 +94,9 @@
                 </div>
                 <h3 style="font-size: 16px; font-weight: 700; color: #000; margin: 0 0 4px 0;">${incident.title}</h3>
                 <p style="font-size: 13px; color: #6B7280; margin: 0 0 8px 0;">${incident.description}</p>
-                
-                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F3F4F6; padding-top: 8px;">
-                    <div style="font-size: 11px; color: #9CA3AF;">
-                        Reported by <span style="color: #374151; font-weight: 600;">${incident.reporter}</span><br>
-                        ${timeAgo(incident.timestamp)}
-                    </div>
-
-                    <!-- ปุ่ม Like/Dislike -->
-                    <div style="display: flex; gap: 8px;">
-                        <!-- Like -->
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="like-button-${incident.id}" onclick="window.handleLike('${incident.id}')" style="background: none; border: 1px solid #E5E7EB; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
-                            </button>
-                            <span id="like-count-${incident.id}" style="font-size: 12px; font-weight: 600; color: #374151;">${incident.likes || 0}</span>
-                        </div>
-                        <!-- Dislike -->
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="dislike-button-${incident.id}" onclick="window.handleDislike('${incident.id}')" style="background: none; border: 1px solid #E5E7EB; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: scaleY(-1);"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
-                            </button>
-                            <span id="dislike-count-${incident.id}" style="font-size: 12px; font-weight: 600; color: #374151;">${incident.dislikes || 0}</span>
-                        </div>
-                    </div>
+                <div style="font-size: 11px; color: #9CA3AF; border-top: 1px solid #F3F4F6; padding-top: 8px;">
+                    Reported by <span style="color: #374151; font-weight: 600;">${incident.reporter}</span><br>
+                    ${timeAgo(incident.timestamp)}
                 </div>
             </div>
         `;
@@ -113,20 +115,45 @@
         el.addEventListener('click', () => {
              selectedIncident = incident;
              isSidebarOpen = true;
+             mapInstance.flyTo({ center: [incident.coordinates.lng, incident.coordinates.lat], zoom: 17 });
         });
+
+        markers[incident.id] = marker;
     }
 
     function flyToIncident(inc) {
-        mapInstance.flyTo({ center: [inc.coordinates.lng, inc.coordinates.lat], zoom: 18 });
+        if(mapInstance) {
+            mapInstance.flyTo({ center: [inc.coordinates.lng, inc.coordinates.lat], zoom: 18 });
+        }
         selectedIncident = inc;
     }
 
     function handleAction(action, id) {
+        if (markers[id]) {
+            markers[id].remove(); // สั่งลบจากแผนที่
+            delete markers[id];   // ลบออกจาก memory
+        }
+
         incidents = incidents.filter(i => i.id !== id);
         selectedIncident = null;
-        notificationMessage = action;
+        
+        notificationMessage = action === 'Approved' ? 'Incident Approved' : 'Incident Rejected';
         showNotification = true;
         setTimeout(() => showNotification = false, 3000);
+    }
+
+    function getCategoryColor(cat) {
+        if (cat === 'accident') return 'text-red-500';
+        if (cat === 'blocked') return 'text-orange-500';
+        if (cat === 'flood') return 'text-blue-500';
+        return 'text-red-500'; 
+    }
+    
+    function getCategoryBg(cat) {
+        if (cat === 'accident') return 'bg-red-100';
+        if (cat === 'blocked') return 'bg-orange-100';
+        if (cat === 'flood') return 'bg-blue-100';
+        return 'bg-red-100';
     }
 </script>
 
@@ -138,60 +165,95 @@
     <Navbar showMenuButton={true} on:toggleSidebar={() => isSidebarOpen = !isSidebarOpen} />
 
     <!-- Sidebar -->
-    <div class="absolute left-0 top-0 bottom-0 z-30 w-full md:w-[400px] bg-white shadow-2xl transition-transform transform {isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} pt-20">
-        <div class="p-4 border-b bg-white flex justify-between items-center sticky top-0 z-10">
-            <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Shield class="w-6 h-6 text-[#8F66FF]" /> Incoming Alerts ({incidents.length})
+    <div class="absolute left-0 top-0 bottom-0 z-30 w-full md:w-[400px] bg-white shadow-2xl transition-transform transform duration-300 ease-in-out {isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} pt-20 flex flex-col">
+        
+        <!-- Header -->
+        <div class="px-6 pt-4 pb-2 flex justify-between items-center">
+            <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                Incoming Alerts 
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">{incidents.length}</span>
             </h2>
-            <button on:click={() => isSidebarOpen = false} class="p-2 hover:bg-gray-100 rounded-lg transition-colors md:hidden">
-                <ChevronLeft />
+            <button on:click={() => isSidebarOpen = false} class="p-1 hover:bg-gray-100 rounded-full md:hidden">
+                <ChevronLeft class="text-gray-400 w-6 h-6" />
             </button>
         </div>
 
-        <div class="p-4 space-y-4 overflow-y-auto h-full pb-24">
-            {#if incidents.length === 0}
+        <!-- Filter Tabs -->
+        <div class="px-6 pb-4 border-b border-gray-100 overflow-x-auto no-scrollbar">
+            <div class="flex gap-2">
+                {#each filters as filter}
+                    <button 
+                        class="px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-all
+                               {activeFilter === filter 
+                               ? 'bg-[#8F66FF] text-white border-[#8F66FF]' 
+                               : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}"
+                        on:click={() => activeFilter = filter}
+                    >
+                        {#if filter === 'All'}
+                            All ({incidents.length})
+                        {:else}
+                             {filter}
+                        {/if}
+                    </button>
+                {/each}
+            </div>
+        </div>
+
+        <!-- Alert List -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 custom-scrollbar">
+            {#if filteredIncidents.length === 0}
                 <div class="flex flex-col items-center justify-center h-64 text-gray-400">
-                    <CheckCircle class="w-12 h-12 mb-2 text-green-400" />
+                    <CheckCircle class="w-12 h-12 mb-2 text-green-400 opacity-50" />
                     <p>All clear! No pending incidents.</p>
                 </div>
             {:else}
-                {#each incidents as incident}
+                {#each filteredIncidents as incident (incident.id)}
+                    <!-- Card -->
                     <div 
-                        class="border-2 bg-white p-4 rounded-2xl shadow-sm cursor-pointer transition-all
-                               {selectedIncident?.id === incident.id ? 'border-[#8F66FF] ring-2 ring-purple-50' : 'border-gray-100 hover:border-gray-300'}" 
+                        class="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition-all cursor-pointer relative overflow-hidden
+                               {selectedIncident?.id === incident.id ? 'ring-2 ring-[#8F66FF] border-transparent' : ''}"
                         on:click={() => flyToIncident(incident)}
                     >
-                        <div class="flex gap-3 mb-3">
-                             <div class="h-12 w-12 rounded-full flex items-center justify-center flex-shrink-0 {CATEGORY_STYLES[incident.category]?.bg || 'bg-gray-100'}">
-                                 <svelte:component this={CATEGORY_STYLES[incident.category]?.Icon || HelpCircle} class="w-6 h-6 {CATEGORY_STYLES[incident.category]?.text || 'text-gray-500'}" />
-                             </div>
-                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-600 uppercase tracking-wider">
-                                        {CATEGORY_DISPLAY_NAMES[incident.category]}
-                                    </span>
-                                    <span class="text-xs text-gray-400 whitespace-nowrap">{timeAgo(incident.timestamp)}</span>
+                        <div class="absolute left-0 top-0 bottom-0 w-1 {getCategoryBg(incident.category).replace('100', '500')}"></div>
+
+                        <div class="flex justify-between items-start mb-2 pl-2">
+                            <div class="flex items-center gap-2">
+                                <div class="p-1.5 rounded-full {getCategoryBg(incident.category)}">
+                                     <svelte:component this={CATEGORY_STYLES[incident.category]?.Icon || HelpCircle} class="w-4 h-4 {getCategoryColor(incident.category)}" />
                                 </div>
-                                 <h3 class="font-bold text-gray-900 truncate">{incident.title}</h3>
-                                 <p class="text-sm text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
-                                 <div class="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                                    <div class="w-2 h-2 rounded-full bg-gray-300"></div>
-                                    Reported by: <span class="text-gray-600 font-medium">{incident.reporter}</span>
-                                 </div>
-                             </div>
+                                <span class="text-[10px] font-bold uppercase tracking-wider {getCategoryColor(incident.category)}">
+                                    {CATEGORY_DISPLAY_NAMES[incident.category] || incident.category.toUpperCase()}
+                                </span>
+                                <span class="text-[10px] text-gray-400 ml-1">
+                                    {new Date(incident.timestamp).toLocaleDateString('th-TH', {day: '2-digit', month: '2-digit', year: 'numeric'})} 
+                                    {new Date(incident.timestamp).toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'})}
+                                </span>
+                            </div>
                         </div>
-                        <div class="flex gap-3 pt-3 border-t border-gray-50">
+
+                        <div class="pl-2 mb-4">
+                            <h3 class="font-bold text-gray-900 text-base leading-tight mb-1">{incident.title}</h3>
+                            <p class="text-sm text-gray-500 line-clamp-2 font-light">{incident.description}</p>
+                        </div>
+
+                        <div class="pl-2 flex justify-between items-center mb-4 text-xs text-gray-400">
+                            <span>Reported by {incident.reporter}</span>
+                            <span>{timeAgo(incident.timestamp)}</span>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex gap-3 pl-2">
                             <button 
-                                class="flex-1 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50 hover:text-red-500 hover:border-red-200 transition-colors" 
+                                class="flex-1 py-2.5 bg-white border border-red-200 text-red-500 rounded-xl font-bold text-sm hover:bg-red-50 transition-colors uppercase tracking-wide"
                                 on:click|stopPropagation={() => handleAction('Rejected', incident.id)}
                             >
-                                Reject
+                                reject
                             </button>
                             <button 
-                                class="flex-1 py-2 bg-[#8F66FF] text-white rounded-xl font-bold text-sm hover:bg-[#7a52e0] shadow-sm shadow-purple-200 transition-colors" 
+                                class="flex-1 py-2.5 bg-[#8F66FF] text-white rounded-xl font-bold text-sm hover:bg-[#7a52e0] shadow-md shadow-purple-100 transition-colors uppercase tracking-wide"
                                 on:click|stopPropagation={() => handleAction('Approved', incident.id)}
                             >
-                                Approve
+                                approve
                             </button>
                         </div>
                     </div>
@@ -220,4 +282,13 @@
     :global(.cmu-popup .maplibregl-popup-close-button) {
         display: none !important;
     }
+    
+    /* Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #e5e7eb; border-radius: 20px; }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .font-kanit { font-family: 'Kanit', sans-serif; }
 </style>
