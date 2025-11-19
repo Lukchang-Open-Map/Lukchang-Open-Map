@@ -40,6 +40,8 @@
 		"vitest": "^4.0.5"
 	},
 	"dependencies": {
+		"@supabase/ssr": "^0.7.0",
+		"@supabase/supabase-js": "^2.83.0",
 		"daisyui": "^5.5.0",
 		"lucide-svelte": "^0.553.0",
 		"maplibre-gl": "^5.12.0"

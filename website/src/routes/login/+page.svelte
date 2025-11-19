@@ -2,6 +2,7 @@
     import { goto } from '$app/navigation';
     import { userStore } from '$lib/stores/userStore.js';
     import { ChevronLeft } from 'lucide-svelte';
+    import { supabase } from '$lib/supabaseClient.js';
 
     let step = 1;
     let cmuEmail = '';
@@ -25,10 +26,18 @@
     }
     $: if (cmuEmail) validateEmail();
 
-    function sendOTP() {
+    async function sendOTP() {
         if (!validateEmail()) return;
         step = 2;
         startCountdown();
+        let { data, error } = await supabase.auth.signInWithOtp({
+          email: cmuEmail
+        })
+        if (error) {
+            alert(error.message);
+        } else {
+          console.log(data);
+        }
     }
 
     function startCountdown() {
@@ -39,17 +48,26 @@
         }, 1000);
     }
 
-    function verifyOTP() {
-        const otp = otpArray.join('');
-        if (otp === '123456') {
-            clearInterval(timer);
-            const role = cmuEmail.startsWith('security') ? 'security' : cmuEmail.startsWith('admin') ? 'admin' : 'member';
-            userStore.set({ name: cmuEmail.split('@')[0], email: cmuEmail, role });
-            if (role === 'security' || role === 'admin') goto(`/${role}`); else goto('/');
+    async function verifyOTP() {
+        const otp = await otpArray.join('');
+        
+        let { data, error } = await supabase.auth.verifyOtp({
+          email: cmuEmail,
+          token: otp,
+          type: 'email'
+        })
+        if (error) {
+            alert(error.message);
         } else {
-            alert('Wrong OTP');
+          console.log(data);
+          const { data: { user } } = await supabase.auth.getUser()
+            console.log(user);
+            userStore.set({ name: cmuEmail.split('@')[0], email: cmuEmail, role: user.role });
+            (user.role === 'security' || user.role === 'admin') ? goto(`/${user.role}`) : goto('/');
+            
+          }
         }
-    }
+    
 
     function handleInput(e, index) {
         const val = e.target.value.replace(/\D/g, '');
