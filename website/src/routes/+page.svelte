@@ -20,6 +20,9 @@
     import { CATEGORY_DISPLAY_NAMES, BLOCKED_MODAL_CONFIG } from '$lib/constant/map-config.js';
     import { generateUUID } from '$lib/utils/generators.js'; 
     import { timeAgo } from '$lib/utils/formatting.js';
+    
+    // Import Logic การกด Like/Dislike
+    import { initializeMapInteractions } from '$lib/utils/map-interactions.js';
 
     // Map State
     let mapInstance;
@@ -37,18 +40,10 @@
     let isPointOrLineModalOpen = false;
     let modalConfig = {};
 
-    // ✅ แก้ไข: กำหนดค่าเริ่มต้นของ Filter ให้เป็น true ทั้งหมด
+    // Filter State
     let filterState = {
-        accident: true,
-        blocked: true,
-        beware: true,
-        flood: true,
-        send_help: true,
-        traffic_general: true,
-        parking: true,
-        events: true,
-        map_chat: true,
-        lost_found: true
+        accident: true, blocked: true, beware: true, flood: true, send_help: true,
+        traffic_general: true, parking: true, events: true, map_chat: true, lost_found: true
     };
 
     // Line Drawing State
@@ -60,6 +55,8 @@
     let toastMessage = '';
 
     onMount(async () => {
+        initializeMapInteractions();
+
         isMobile = window.innerWidth < 768;
         if(!$userStore) { goto('/login'); return; }
         if ($userStore.role === 'admin') { goto('/admin'); return; }
@@ -81,7 +78,6 @@
             const coords = e.lngLat.toArray();
             currentLinePoints.push(coords);
             updateTempLine();
-            
             const el = document.createElement('div');
             el.className = 'w-3 h-3 bg-white rounded-full border-2 border-orange-500 shadow-md';
             const marker = new maplibreglInstance.Marker({ element: el }).setLngLat(coords).addTo(mapInstance);
@@ -135,46 +131,62 @@
         const el = document.createElement('div');
         mount(CustomMarker, { target: el, props: { category: data.category } });
         
+        const pinId = data.id || generateUUID();
+        const likes = data.likes || 0;
+        const dislikes = data.dislikes || 0;
+
         const imageHTML = data.photoPreviewUrl 
             ? `<div style="width: 100%; height: 140px; background-image: url('${data.photoPreviewUrl}'); background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 12px;"></div>` 
             : '';
 
         const popupHTML = `
-            <div style="font-family: 'Kanit', sans-serif; min-width: 220px; padding: 4px;">
+            <div style="font-family: 'Kanit', sans-serif; min-width: 200px; padding: 4px;">
                 ${imageHTML}
-                <div style="margin-bottom: 12px;">
-                    <h3 style="font-size: 18px; font-weight: 700; color: #000; margin: 0; line-height: 1.3;">${data.title}</h3>
-                    ${data.description ? `<p style="font-size: 13px; color: #6B7280; margin-top: 4px;">${data.description}</p>` : ''}
-                </div>
+                <h3 style="font-size: 20px; font-weight: 800; color: #000; margin: 0 0 12px 0; line-height: 1.2;">
+                    ${data.title}
+                </h3>
                 <div style="display: flex; justify-content: space-between; align-items: flex-end;">
                     <div style="font-size: 12px; color: #6B7280; line-height: 1.4;">
-                        <span>report by</span><br>
-                        <span style="color: #374151; font-weight: 500;">${data.reporter || 'anonymous'}</span><br>
-                        <span>${timeAgo(data.timestamp)}</span>
+                        <span style="color: #6B7280;">report by</span><br>
+                        <span style="color: #1F2937; font-weight: 700; font-size: 13px;">${data.reporter || 'anonymous'}</span><br>
+                        <span style="color: #6B7280;">${timeAgo(data.timestamp)}</span>
                     </div>
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <div style="display: flex; align-items: center; gap: 4px;">
-                            <button style="background: none; border: none; cursor: pointer; padding: 0; display: flex;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button>
-                            <span style="font-weight: 600; font-size: 14px; color: #374151;">${data.likes || 0}</span>
+                    <div style="display: flex; gap: 16px; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <button id="like-button-${pinId}" onclick="window.handleLike('${pinId}')" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+                            </button>
+                            <span id="like-count-${pinId}" style="font-weight: 700; font-size: 16px; color: #374151;">${likes}</span>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 4px;">
-                            <button style="background: none; border: none; cursor: pointer; padding: 0; display: flex;"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: scaleY(-1);"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button>
-                            <span style="font-weight: 600; font-size: 14px; color: #374151;">${data.dislikes || 0}</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <button id="dislike-button-${pinId}" onclick="window.handleDislike('${pinId}')" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: scaleY(-1);"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+                            </button>
+                            <span id="dislike-count-${pinId}" style="font-weight: 700; font-size: 16px; color: #374151;">${dislikes}</span>
                         </div>
                     </div>
                 </div>
             </div>
         `;
 
-        const popup = new maplibreglInstance.Popup({ offset: 35, className: 'cmu-popup', closeButton: false, maxWidth: '300px' }).setHTML(popupHTML);
+        const popup = new maplibreglInstance.Popup({ offset: 35, className: 'cmu-popup', closeButton: false, maxWidth: '320px' }).setHTML(popupHTML);
         new maplibreglInstance.Marker({ element: el, anchor: 'bottom' }).setLngLat([data.coordinates.lng, data.coordinates.lat]).setPopup(popup).addTo(mapInstance);
     }
 
     function handlePinSubmit(e) {
-        addPinToMap(e.detail);
+        const formData = e.detail;
+        
+        // เช็คว่าถ้าเป็น Public ถึงจะปักหมุดลง Map
+        if (formData.visibility === 'public') {
+            addPinToMap(formData);
+            toastMessage = 'Post published on map';
+        } else {
+            // ถ้าส่งให้ Staff Only ไม่ต้องปักหมุด
+            toastMessage = 'Report sent to security staff';
+        }
+
         showDetailForm = false;
         selectedCategory = null;
-        toastMessage = 'Post success';
         showToast = true;
         setTimeout(() => showToast = false, 3000);
     }
