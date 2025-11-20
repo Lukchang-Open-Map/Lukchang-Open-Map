@@ -25,6 +25,7 @@
 	import { CATEGORY_DISPLAY_NAMES, BLOCKED_MODAL_CONFIG } from '$lib/constant/map-config.js';
 	import { timeAgo } from '$lib/utils/formatting.js';
 	import { initializeMapInteractions } from '$lib/utils/map-interactions.js';
+	import { distance, point } from '@turf/turf';
 
 	// Map State
 	let mapInstance;
@@ -40,11 +41,13 @@
 	let showSendHelpModal = false;
 	let isFilterSidebarOpen = false;
 	let isPointOrLineModalOpen = false;
+	let nearestSecurityDistance = null;
 
 	// --- เติมบรรทัดนี้เข้าไปครับ ---
 	let modalConfig = {};
 	// Data State (Real Data)
 	let categoriesDB = [];
+	let securityZonesDB = [];
 	let mapMarkers = [];
 	let layersIds = [];
 
@@ -69,6 +72,9 @@
 	let lineVertexMarkers = [];
 	let showToast = false;
 	let toastMessage = '';
+
+	// Security Zone State
+	let showSecurityZone = false;
 
 	// Hardcoded Fallback Area
 	const focusAreaCoordinates = [
@@ -114,11 +120,18 @@
 				data: { user }
 			} = await supabase.auth.getUser();
 			if (user) {
+				// Fetch profile data including role from profiles table
+				const { data: profile } = await supabase
+					.from('profiles')
+					.select('full_name, role')
+					.eq('id', user.id)
+					.single();
+
 				userStore.set({
 					id: user.id,
-					name: user.email ? user.email.split('@')[0] : 'User',
+					name: profile?.full_name || user.email?.split('@')[0] || 'User',
 					email: user.email,
-					role: user.role
+					role: profile?.role || 'member'
 				});
 			} else {
 				goto('/login');
@@ -127,9 +140,10 @@
 		}
 
 		await fetchCategories();
+		await fetchSecurityZones();
 
 		// Close Splash Screen
-		await new Promise((resolve) => setTimeout(resolve, 1500));
+		await new Promise((resolve) => setTimeout(resolve, 100));
 		showSplash = false;
 	});
 
@@ -151,6 +165,31 @@
 			categoriesDB = data;
 		} else {
 			console.error('Error fetching categories:', error);
+		}
+	}
+
+	async function fetchSecurityZones() {
+		console.log('🔍 Fetching security zones from database...');
+		const { data, error } = await supabase.from('security_zones').select('*').eq('is_active', true);
+
+		if (error) {
+			console.error('❌ Error fetching security zones:', error);
+			return;
+		}
+
+		if (data && data.length > 0) {
+			securityZonesDB = data;
+			console.log(`✅ Fetched ${data.length} security zone(s):`, data);
+			data.forEach((zone, i) => {
+				console.log(`  Zone ${i + 1}: ${zone.name} (ID: ${zone.id}, Active: ${zone.is_active})`);
+				console.log(`    Geometry type: ${zone.geometry?.type}`);
+			});
+		} else {
+			console.warn('⚠️  No security zones found in database');
+			// Alert the user if no zones found - this helps debugging "not found" issues
+			alert(
+				'⚠️ Debug: No security zones found in database. Please check your internet connection or database policies.'
+			);
 		}
 	}
 
@@ -291,8 +330,107 @@
 			});
 		}
 
-		// 3. Load Data from DB
+		// 3. Setup Security Zones (Filled Polygons from DB)
+		console.log('🗺️  Setting up security zones on map...');
+		if (securityZonesDB && securityZonesDB.length > 0) {
+			console.log(`📍 Creating ${securityZonesDB.length} security zone layer(s)`);
+			securityZonesDB.forEach((zone, index) => {
+				const securityZoneId = `security-zone-fill-${zone.id}`;
+				const securityZoneSourceId = `security-zone-source-${zone.id}`;
+
+				if (!mapInstance.getSource(securityZoneSourceId)) {
+					try {
+						// Convert PostGIS geometry to GeoJSON
+						const securityZoneFeature = {
+							type: 'Feature',
+							properties: {
+								name: zone.name,
+								description: zone.description
+							},
+							geometry: zone.geometry
+						};
+
+						console.log(`  ✓ Creating layer for zone: ${zone.name}`);
+						console.log(`    Layer ID: ${securityZoneId}`);
+						console.log(`    Geometry:`, zone.geometry);
+
+						mapInstance.addSource(securityZoneSourceId, {
+							type: 'geojson',
+							data: securityZoneFeature
+						});
+
+						mapInstance.addLayer({
+							id: securityZoneId,
+							type: 'fill',
+							source: securityZoneSourceId,
+							layout: {
+								visibility: 'none'
+							},
+							paint: {
+								'fill-color': '#8F66FF',
+								'fill-opacity': 0.15
+							}
+						});
+
+						// Add border/outline layer
+						mapInstance.addLayer({
+							id: `${securityZoneId}-outline`,
+							type: 'line',
+							source: securityZoneSourceId,
+							layout: {
+								visibility: 'none'
+							},
+							paint: {
+								'line-color': '#8F66FF',
+								'line-width': 2,
+								'line-opacity': 0.6
+							}
+						});
+
+						console.log(`  ✅ Successfully created layers for: ${zone.name}`);
+					} catch (error) {
+						console.error(`  ❌ Error creating layer for zone ${zone.name}:`, error);
+					}
+				}
+			});
+		} else {
+			console.warn('⚠️  No security zones to render on map');
+		}
+
+		// 4. Load Data from DB
 		fetchReportsAndDraw();
+	}
+
+	function toggleSecurityZone() {
+		showSecurityZone = !showSecurityZone;
+		console.log(`🔄 Toggling security zones: ${showSecurityZone ? 'SHOW' : 'HIDE'}`);
+
+		if (mapInstance && securityZonesDB && securityZonesDB.length > 0) {
+			securityZonesDB.forEach((zone) => {
+				const layerId = `security-zone-fill-${zone.id}`;
+				const outlineLayerId = `${layerId}-outline`;
+
+				if (mapInstance.getLayer(layerId)) {
+					mapInstance.setLayoutProperty(
+						layerId,
+						'visibility',
+						showSecurityZone ? 'visible' : 'none'
+					);
+					console.log(`  ✓ ${zone.name} fill: ${showSecurityZone ? 'visible' : 'hidden'}`);
+				}
+
+				if (mapInstance.getLayer(outlineLayerId)) {
+					mapInstance.setLayoutProperty(
+						outlineLayerId,
+						'visibility',
+						showSecurityZone ? 'visible' : 'none'
+					);
+					console.log(`  ✓ ${zone.name} outline: ${showSecurityZone ? 'visible' : 'hidden'}`);
+				}
+			});
+		} else {
+			console.warn('⚠️  Cannot toggle: No security zones available or map not ready');
+		}
 	}
 
 	function isPointInArea(point, polygon) {
@@ -411,7 +549,7 @@
 		const popupHTML = `
             <div style="font-family: 'Kanit', sans-serif; min-width: 200px; padding: 4px;">
                 ${imageHTML}
-                <h3 style="font-size: 20px; font-weight: 900; color: #000; margin: 0 0 12px 0; line-height: 1.2;">${data.title}</h3>
+                <h3 style="font-size: 20px; font-weight: 400; color: #000; margin: 0 0 12px 0; line-height: 1.2;">${data.title}</h3>
                 <div style="display: flex; justify-content: space-between; align-items: flex-end;">
                     <div style="font-size: 13px; line-height: 1.4; color: #6B7280;">
                         <span>report by</span><br><span style="color: #1F2937; font-weight: 700;">${data.reporter}</span><br><span>${timeAgo(data.timestamp)}</span>
@@ -563,10 +701,46 @@
 		cancelAll();
 	}
 
+	async function calculateDistanceToNearestSecurity() {
+		try {
+			const { latitude, longitude } = await getUserLocation();
+			const userPoint = point([longitude, latitude]);
+			let minDistance = Infinity;
+
+			if (securityZonesDB && securityZonesDB.length > 0) {
+				securityZonesDB.forEach((zone) => {
+					// For simplicity, we calculate distance to the first point of the polygon
+					// A more accurate approach would be pointToPolygonDistance but that requires more complex logic
+					// or using turf.pointOnFeature if available.
+					// Given the zones are likely small, this approximation is acceptable for now.
+					if (zone.geometry && zone.geometry.coordinates && zone.geometry.coordinates[0]) {
+						// Handle MultiPolygon vs Polygon vs Point if needed, but assuming Polygon for zones
+						// Polygon coordinates are usually [[[x,y], [x,y], ...]]
+						const zonePoint = point(zone.geometry.coordinates[0][0]);
+						const d = distance(userPoint, zonePoint, { units: 'meters' });
+						if (d < minDistance) {
+							minDistance = d;
+						}
+					}
+				});
+			}
+
+			if (minDistance !== Infinity) {
+				nearestSecurityDistance = Math.round(minDistance);
+			} else {
+				nearestSecurityDistance = null;
+			}
+		} catch (error) {
+			console.error('Error calculating distance:', error);
+			nearestSecurityDistance = null;
+		}
+	}
+
 	function handleCategorySelect(e) {
 		const category = e.detail;
 		isMobileCategorySheetOpen = false;
 		if (category === 'send_help') {
+			calculateDistanceToNearestSecurity();
 			showSendHelpModal = true;
 			return;
 		}
@@ -782,6 +956,7 @@
 
 		{#if showSendHelpModal}
 			<SendHelpConfirmModal
+				distance={nearestSecurityDistance}
 				on:close={() => (showSendHelpModal = false)}
 				on:confirm={() => {
 					showSendHelpModal = false;

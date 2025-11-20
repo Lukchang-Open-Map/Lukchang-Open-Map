@@ -7,7 +7,7 @@
 	let step = 1;
 	let cmuEmail = '';
 	let otpArray = Array(6).fill('');
-	let countdown = 50;
+	let countdown = 300;
 	let timer;
 	let emailError = '';
 
@@ -44,7 +44,7 @@
 	}
 
 	function startCountdown() {
-		countdown = 50;
+		countdown = 300;
 		clearInterval(timer);
 		timer = setInterval(() => {
 			if (countdown > 0) countdown--;
@@ -66,13 +66,23 @@
 			const {
 				data: { user }
 			} = await supabase.auth.getUser();
+
+			// Fetch profile data including role from profiles table
+			const { data: profile } = await supabase
+				.from('profiles')
+				.select('full_name, role')
+				.eq('id', user.id)
+				.single();
+
 			userStore.set({
 				id: user.id,
-				name: cmuEmail.split('@')[0],
+				name: profile?.full_name || cmuEmail.split('@')[0],
 				email: cmuEmail,
-				role: user.role
+				role: profile?.role || 'member'
 			});
-			user.role === 'security' || user.role === 'admin' ? goto(`/${user.role}`) : goto('/');
+
+			const userRole = profile?.role || 'member';
+			userRole === 'security' || userRole === 'admin' ? goto(`/${userRole}`) : goto('/');
 		}
 	}
 

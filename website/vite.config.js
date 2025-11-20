@@ -15,7 +15,7 @@ export default defineConfig({
 		})
 	],
 	server: {
-		allowedHosts: ['weevil-excited-precisely.ngrok-free.app']
+		allowedHosts: ['weevil-excited-precisely.ngrok-free.app','promised-marking-buys-produced.trycloudflare.com']
 	},
 	test: {
 		expect: { requireAssertions: true },

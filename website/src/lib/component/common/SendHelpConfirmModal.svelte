@@ -5,6 +5,7 @@
 	const dispatch = createEventDispatcher();
 
 	export let initialCountdown = 10;
+	export let distance = null;
 	let countdownSeconds = initialCountdown;
 	let interval;
 
@@ -122,6 +123,14 @@
 					style="width: calc({sliderValue}% + 64px);"
 				></div>
 			</div>
+
+			{#if distance !== null && distance !== undefined}
+				<div class="mt-4 rounded-lg bg-gray-50 p-3">
+					<p class="text-sm text-gray-600">
+						Nearest security is <span class="font-bold text-[#8F66FF]">{distance}</span> meters away
+					</p>
+				</div>
+			{/if}
 
 			<div class="mt-4 text-sm text-gray-500">
 				Auto-cancel in <span class="font-bold text-red-500">{countdownSeconds}</span> seconds...

@@ -50,6 +50,10 @@
 	let showNotification = false;
 	let notificationMessage = '';
 
+	import { supabase } from '$lib/supabaseClient';
+
+	// ... existing imports ...
+
 	// --- ADMIN STATE ---
 	let posts = [];
 	let activeTab = 'posts';
@@ -58,45 +62,24 @@
 	let searchQuery = '';
 	let activeFilter = 'All';
 	const filters = ['All', 'Accident/Hazard', 'Blocked', 'Flood'];
-	const SECURITY_LOCATIONS = [
-		{ id: 0, name: 'ทางเข้าวงเวียน', lng: 98.95315768199401, lat: 18.795269111341696 },
-		{ id: 1, name: 'สี่แยกสถาปัต', lng: 98.95043693938567, lat: 18.79684741671042 },
-		{ id: 2, name: 'ทางเข้าหน้ามอ', lng: 98.95438058092196, lat: 18.80722761195173 },
-		{ id: 3, name: 'ทางออกหน้ามอ', lng: 98.95315671360765, lat: 18.80615435722116 },
-		{ id: 4, name: 'อ่างแก้ว', lng: 98.95043172833226, lat: 18.805220006467806 },
-		{ id: 5, name: 'แมสคอม', lng: 98.94818999196912, lat: 18.80199061126453 },
-		{ id: 6, name: 'อ่างตาด', lng: 98.94910352845847, lat: 18.803583664409146 },
-		{ id: 7, name: 'อมช', lng: 98.95112492412699, lat: 18.79919173363757 },
-		{ id: 9, name: 'สี่แยกสนามกีฬา', lng: 98.95594476882661, lat: 18.796233122362295 },
-		{ id: 10, name: 'ศึกษา', lng: 98.95491536596535, lat: 18.79607521853582 },
-		{ id: 11, name: 'ศึกษาเขตโรงเรียน', lng: 98.9545069281923, lat: 18.79354796618422 },
-		{ id: 12, name: 'ที่จอดรถม่วง', lng: 98.9524127165368, lat: 18.799320534641495 },
-		{ id: 13, name: 'ยาม econ', lng: 98.95010644217899, lat: 18.801270245348462 },
-		{ id: 14, name: 'ยาม TLIC', lng: 98.95079215005626, lat: 18.799137061806817 },
-		{ id: 16, name: 'สามแยกศูนย์กีฬา', lng: 98.95758652571425, lat: 18.798622542172552 },
-		{ id: 17, name: 'ประตูไผ่ล้อม', lng: 98.95730726696297, lat: 18.801104176013 },
-		{ id: 24, name: 'ศูนย์ไผ่ล้อม', lng: 98.95564704429125, lat: 18.799277269645202 },
-		{ id: 28, name: 'ศูนย์รปภกลาง', lng: 98.95511177488146, lat: 18.80381114758015 },
-		{ id: 29, name: 'ประตูวิศวะ', lng: 98.95033924794808, lat: 18.79427209698818 },
-		{ id: 30, name: 'ห้องสมุด', lng: 98.95172301936992, lat: 18.80109868911734 },
-		{ id: 20, name: 'ยามประตูข้างมอ', lng: 98.96096163583366, lat: 18.79565990804005 }
-	];
+	let securityZones = []; // Renamed from SECURITY_LOCATIONS to be dynamic
+	let categoriesDB = [];
 
-	// --- USER VIEW STATE ---
-	let selectedCategory = null;
-	let showDetailForm = false;
-	let pinCoordinates = null;
-	let isMobileCategorySheetOpen = false;
-	let showSendHelpModal = false;
-	let isFilterSidebarOpen = false;
-	let isPointOrLineModalOpen = false;
+	// --- MISSING STATE RESTORED ---
 	let modalConfig = {};
+	let isPointOrLineModalOpen = false;
 	let isDrawingLine = false;
 	let drawingLineCategory = '';
 	let currentLinePoints = [];
 	let lineVertexMarkers = [];
 	let showToast = false;
 	let toastMessage = '';
+	let isMobileCategorySheetOpen = false;
+	let showSendHelpModal = false;
+	let isFilterSidebarOpen = false;
+	let pinCoordinates = null;
+	let showDetailForm = false;
+	let selectedCategory = null;
 	let filterState = {
 		accident: true,
 		blocked: true,
@@ -110,47 +93,231 @@
 		lost_found: true
 	};
 
-	// --- LOGIC: ADMIN FILTER ---
 	$: filteredPosts = posts.filter((post) => {
 		const matchesSearch =
 			post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			post.description.toLowerCase().includes(searchQuery.toLowerCase());
+			post.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			post.reporter.name.toLowerCase().includes(searchQuery.toLowerCase());
 		const matchesFilter =
 			activeFilter === 'All' ||
-			(CATEGORY_DISPLAY_NAMES[post.category] || post.category).includes(activeFilter.split('/')[0]);
+			(activeFilter === 'Accident/Hazard' && post.category === 'accident') ||
+			(activeFilter === 'Blocked' && post.category === 'blocked') ||
+			(activeFilter === 'Flood' && post.category === 'flood');
 		return matchesSearch && matchesFilter;
 	});
 
-	onMount(() => {
+	// ... existing code ...
+
+	onMount(async () => {
 		initializeMapInteractions();
 		isMobile = window.innerWidth < 768;
 
-		// Mock Data
-		posts = [
-			{
-				id: 'post_001',
-				category: 'accident',
-				title: 'รถเครื่องชนกัน',
-				description: 'เกิดอุบัติเหตุที่หน้ามอ ต้องการความช่วยเหลือ',
-				coordinates: { lng: 98.9545, lat: 18.807 },
-				reporter: { name: 'Somchai Lertsuk' },
-				timestamp: new Date(Date.now() - 3600000).toISOString(),
-				likes: 12,
-				dislikes: 2
-			},
-			{
-				id: 'post_002',
-				category: 'map_chat',
-				title: 'ใครรู้พิกัดร้านกาแฟดีๆ',
-				description: 'แนะนำร้านกาแฟใกล้ห้องสมุดหน่อยครับ',
-				coordinates: { lng: 98.9517, lat: 18.8011 },
-				reporter: { name: 'John Doe' },
-				timestamp: new Date(Date.now() - 10800000).toISOString(),
-				likes: 15,
-				dislikes: 1
-			}
-		];
+		await fetchReportsAndDraw();
+		await fetchSecurityZones();
+		await fetchCategories();
 	});
+
+	async function fetchCategories() {
+		const { data, error } = await supabase.from('report_categories').select('*');
+		if (data) {
+			categoriesDB = data;
+		} else {
+			console.error('Error fetching categories:', error);
+		}
+	}
+
+	async function fetchReportsAndDraw() {
+		const { data, error } = await supabase
+			.from('reports')
+			.select(
+				`
+				*,
+				category:report_categories(name, icon),
+				reporter:profiles!created_by_user_id(full_name),
+				votes:report_verifications(vote)
+			`
+			)
+			.order('created_at', { ascending: false });
+
+		if (data) {
+			posts = data
+				.map((post) => {
+					// Handle different geometry types
+					let coordinates;
+					if (post.geometry.type === 'Point') {
+						coordinates = {
+							lng: post.geometry.coordinates[0],
+							lat: post.geometry.coordinates[1]
+						};
+					} else if (post.geometry.type === 'LineString') {
+						// Use first point of the line for marker position
+						coordinates = {
+							lng: post.geometry.coordinates[0][0],
+							lat: post.geometry.coordinates[0][1]
+						};
+					} else {
+						// Fallback for unknown geometry types
+						console.warn(`Unknown geometry type: ${post.geometry.type}`, post);
+						return null;
+					}
+
+					return {
+						id: post.id,
+						category: post.category?.name || 'general',
+						title: post.title,
+						description: post.description,
+						coordinates: coordinates,
+						reporter: {
+							name: post.is_anonymous ? 'Anonymous' : post.reporter?.full_name || 'Unknown'
+						},
+						timestamp: post.created_at,
+						likes: post.votes?.filter((v) => v.vote === 1).length || 0,
+						dislikes: post.votes?.filter((v) => v.vote === -1).length || 0,
+						photoUrl: post.photo_url,
+						geometryType: post.geometry.type // Store for reference
+					};
+				})
+				.filter((post) => post !== null); // Remove any null entries from unknown geometry types
+
+			// Fetch photos for posts
+			for (let post of posts) {
+				const { data: photoData } = await supabase
+					.from('report_photos')
+					.select('storage_path')
+					.eq('report_id', post.id)
+					.single();
+
+				if (photoData) {
+					const { data: publicUrlData } = supabase.storage
+						.from('report-photos')
+						.getPublicUrl(photoData.storage_path);
+					post.photoPreviewUrl = publicUrlData.publicUrl;
+				}
+			}
+			$: filteredPosts = posts.filter((post) => {
+				const matchesSearch =
+					post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+					post.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+					post.reporter.name.toLowerCase().includes(searchQuery.toLowerCase());
+
+				// Admin sidebar filter
+				const matchesAdminFilter =
+					activeFilter === 'All' ||
+					(activeFilter === 'Accident/Hazard' && post.category === 'accident') ||
+					(activeFilter === 'Blocked' && post.category === 'blocked') ||
+					(activeFilter === 'Flood' && post.category === 'flood');
+
+				// User view filter (using filterState)
+				let matchesUserFilter = true;
+				if (viewMode === 'user') {
+					// Map post categories to filterState keys
+					// Note: 'traffic' in post.category maps to 'traffic_general' in filterState
+					const filterKey = post.category === 'traffic' ? 'traffic_general' : post.category;
+
+					// Check if the category exists in filterState and is enabled
+					// If category not in filterState (e.g. 'general'), default to true or handle as needed
+					if (filterKey in filterState) {
+						matchesUserFilter = filterState[filterKey];
+					}
+				}
+
+				return matchesSearch && matchesAdminFilter && matchesUserFilter;
+			});
+
+			// Update markers when filteredPosts changes
+			$: {
+				if (mapInstance && filteredPosts) {
+					updateMarkers();
+				}
+			}
+		} else {
+			console.error('Error fetching reports:', error);
+		}
+	}
+
+	async function fetchSecurityZones() {
+		const { data, error } = await supabase.from('security_zones').select('*').eq('is_active', true);
+
+		if (data) {
+			securityZones = data.map((zone) => ({
+				id: zone.id,
+				name: zone.name,
+				// Use centroid or first point for marker if it's a polygon,
+				// but for now let's assume we want to show a marker at a representative point.
+				// Since we don't have a center point in DB, we'll calculate a simple center from geometry
+				lng: zone.geometry.coordinates[0][0][0],
+				lat: zone.geometry.coordinates[0][0][1]
+			}));
+			updateSecurityMarkers();
+		} else {
+			console.error('Error fetching security zones:', error);
+		}
+	}
+
+	// --- HELPER FUNCTIONS ---
+	function getCategoryBg(category) {
+		return CATEGORY_STYLES[category]?.bg || 'bg-gray-100';
+	}
+
+	function getCategoryColor(category) {
+		return CATEGORY_STYLES[category]?.text || 'text-gray-600';
+	}
+
+	function flyToPost(post) {
+		if (!mapInstance) return;
+		mapInstance.flyTo({ center: [post.coordinates.lng, post.coordinates.lat], zoom: 16 });
+		selectedPost = post;
+		isSidebarOpen = false;
+	}
+
+	function flyToSecurity(zone) {
+		if (!mapInstance) return;
+		mapInstance.flyTo({ center: [zone.lng, zone.lat], zoom: 16 });
+		isSidebarOpen = false;
+	}
+
+	function updateMarkers() {
+		if (!mapInstance) return;
+
+		// Clear existing markers
+		Object.values(markers).forEach((marker) => marker.remove());
+		markers = {};
+
+		// Use filteredPosts instead of posts to respect filters
+		filteredPosts.forEach((post) => {
+			const el = document.createElement('div');
+			mount(CustomMarker, { target: el, props: { category: post.category } });
+
+			const imageHTML = post.photoPreviewUrl
+				? `<div style="width: 100%; height: 140px; background-image: url('${post.photoPreviewUrl}'); background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 12px;"></div>`
+				: '';
+
+			const popupHTML = `
+                <div style="font-family: 'Kanit', sans-serif; min-width: 200px; padding: 4px;">
+                    ${imageHTML}
+                    <h3 style="font-size: 20px; font-weight: 400; color: #000; margin: 0 0 12px 0; line-height: 1.2;">${post.title}</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                        <div style="font-size: 13px; line-height: 1.4; color: #6B7280;">
+                            <span>report by</span><br><span style="color: #1F2937; font-weight: 700;">${post.reporter.name}</span><br><span>${timeAgo(post.timestamp)}</span>
+                        </div>
+                    </div>
+                </div>`;
+
+			const popup = new maplibreglInstance.Popup({
+				offset: 35,
+				className: 'cmu-popup',
+				closeButton: false,
+				maxWidth: '300px'
+			}).setHTML(popupHTML);
+
+			const marker = new maplibreglInstance.Marker({ element: el, anchor: 'bottom' })
+				.setLngLat([post.coordinates.lng, post.coordinates.lat])
+				.setPopup(popup)
+				.addTo(mapInstance);
+
+			markers[post.id] = marker;
+		});
+	}
 
 	function handleMapLoad({ detail }) {
 		mapInstance = detail.map;
@@ -168,8 +335,9 @@
 			paint: { 'line-color': '#F97316', 'line-width': 5, 'line-dasharray': [2, 2] }
 		});
 
+		// Initial draw
 		updateMarkers();
-		addSecurityMarkers(); // ✅ เพิ่มฟังก์ชันนี้
+		updateSecurityMarkers();
 	}
 
 	function handleMapClick({ detail: e }) {
@@ -190,10 +358,13 @@
 	}
 
 	// --- SECURITY MARKERS ---
-	function addSecurityMarkers() {
+	function updateSecurityMarkers() {
 		if (!mapInstance) return;
 
-		SECURITY_LOCATIONS.forEach((location) => {
+		securityMarkers.forEach((marker) => marker.remove());
+		securityMarkers = [];
+
+		securityZones.forEach((location) => {
 			const el = document.createElement('div');
 			// ใช้ icon ยาม (Security Icon)
 			el.innerHTML = `<div class="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center border-2 border-purple-200 p-1"><img src="/security.svg" alt="Security" class="w-full h-full object-contain" /></div>`;
@@ -218,64 +389,22 @@
 		});
 	}
 
-	function flyToSecurity(location) {
-		if (mapInstance) mapInstance.flyTo({ center: [location.lng, location.lat], zoom: 17 });
-	}
+	// ... existing code ...
 
-	// --- COMMON MARKER LOGIC ---
-	function updateMarkers() {
-		if (!mapInstance) return;
-		posts.forEach((post) => addMarker(post));
-	}
+	async function deletePost(id) {
+		console.log('Attempting to delete post:', id);
+		if (!confirm('Are you sure you want to delete this post?')) return;
 
-	function addMarker(post) {
-		if (markers[post.id]) return;
-		const el = document.createElement('div');
-		mount(CustomMarker, { target: el, props: { category: post.category } });
+		const { error } = await supabase.from('reports').delete().eq('id', id);
 
-		// Admin & User share same popup style (or can be customized)
-		const pinId = post.id;
-		const popupHTML = `
-            <div style="font-family: 'Kanit', sans-serif; min-width: 200px; padding: 4px;">
-                ${post.photoPreviewUrl ? `<div style="width: 100%; height: 120px; background-image: url('${post.photoPreviewUrl}'); background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 8px;"></div>` : ''}
-                <h3 style="font-weight: 800; margin-bottom: 4px;">${post.title}</h3>
-                <p style="font-size: 13px; color: #6B7280;">${post.description}</p>
-                <div style="font-size: 11px; color: #9CA3AF; margin-top: 8px;">Reported by ${post.reporter.name || 'Anonymous'} • ${timeAgo(post.timestamp)}</div>
-                <div style="display: flex; gap: 12px; margin-top: 8px; align-items: center;">
-                     <div style="display: flex; align-items: center; gap: 4px;"><button onclick="window.handleLike('${pinId}')" style="background:none;border:none;cursor:pointer;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><span id="like-count-${pinId}" style="font-weight:700; font-size:14px; color:#374151;">${post.likes}</span></div>
-                </div>
-            </div>`;
+		if (error) {
+			console.error('Error deleting post:', error);
+			alert('Failed to delete post: ' + error.message);
+			return;
+		}
 
-		const popup = new maplibreglInstance.Popup({
-			offset: 35,
-			className: 'cmu-popup',
-			closeButton: false
-		}).setHTML(popupHTML);
-		const marker = new maplibreglInstance.Marker({ element: el, anchor: 'bottom' })
-			.setLngLat([post.coordinates.lng, post.coordinates.lat])
-			.setPopup(popup)
-			.addTo(mapInstance);
+		console.log('Post deleted successfully:', id);
 
-		markers[post.id] = marker;
-
-		el.addEventListener('click', () => {
-			selectedPost = post;
-			// If Admin, open sidebar. If User, just show popup (default behavior)
-			if (viewMode === 'admin') {
-				isSidebarOpen = true;
-				mapInstance.flyTo({ center: [post.coordinates.lng, post.coordinates.lat], zoom: 17 });
-			}
-		});
-	}
-
-	// --- ADMIN FUNCTIONS ---
-	function flyToPost(post) {
-		if (mapInstance)
-			mapInstance.flyTo({ center: [post.coordinates.lng, post.coordinates.lat], zoom: 18 });
-		selectedPost = post;
-	}
-
-	function deletePost(id) {
 		if (markers[id]) {
 			markers[id].remove();
 			delete markers[id];
@@ -286,54 +415,86 @@
 		setTimeout(() => (showNotification = false), 3000);
 	}
 
-	function getCategoryColor(cat) {
-		if (cat === 'accident') return 'text-red-600';
-		if (cat === 'blocked') return 'text-orange-600';
-		if (cat === 'flood') return 'text-blue-600';
-		return 'text-gray-700';
-	}
+	// ... existing code ...
 
-	function getCategoryBg(cat) {
-		if (cat === 'accident') return 'bg-red-100';
-		if (cat === 'blocked') return 'bg-orange-100';
-		if (cat === 'flood') return 'bg-blue-100';
-		return 'bg-gray-100';
-	}
-
-	// --- USER VIEW FUNCTIONS ---
-	function handleNextStep() {
-		const center = mapInstance.getCenter();
-		pinCoordinates = { lng: center.lng, lat: center.lat };
-		showDetailForm = true;
-	}
-
-	function handlePinSubmit(e) {
+	async function handlePinSubmit(e) {
 		const formData = e.detail;
-		const newPost = {
-			id: formData.id,
-			category: formData.category,
-			title: formData.title,
-			description: formData.description,
-			coordinates: formData.coordinates,
-			reporter: { name: 'Admin' }, // Admin creating post
-			timestamp: new Date().toISOString(),
-			likes: 0,
-			dislikes: 0,
-			photoUrl: formData.photoPreviewUrl
-		};
 
-		if (formData.visibility === 'public') {
-			posts = [newPost, ...posts]; // Add to admin list
-			addMarker(newPost); // Add to map
-			toastMessage = 'Post published on map';
+		// Upload photo if exists
+		let uploadedPhotoPath = null;
+		if (formData.photoFile) {
+			const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.jpg`;
+			const { data: uploadData, error: uploadError } = await supabase.storage
+				.from('report-photos')
+				.upload(fileName, formData.photoFile);
+
+			if (uploadError) {
+				console.error('Upload failed', uploadError);
+				return alert('Photo upload failed');
+			}
+			uploadedPhotoPath = uploadData.path;
+		}
+
+		// Get category ID
+		const { data: categoryData } = await supabase
+			.from('report_categories')
+			.select('id')
+			.eq('name', formData.category)
+			.single();
+
+		if (!categoryData) return alert('Category not found');
+
+		const { data: reportData, error: reportError } = await supabase
+			.from('reports')
+			.insert({
+				created_by_user_id: $userStore.id,
+				category_id: categoryData.id,
+				title: formData.title,
+				description: formData.description,
+				geometry: {
+					type: 'Point',
+					coordinates: [formData.coordinates.lng, formData.coordinates.lat]
+				},
+				status: 'pending',
+				is_anonymous: false,
+				visibility: formData.visibility || 'public'
+			})
+			.select()
+			.single();
+
+		if (reportError) {
+			console.error('Insert report failed', reportError);
+			toastMessage = 'Failed to submit report';
 		} else {
-			toastMessage = 'Report sent to security staff';
+			if (uploadedPhotoPath) {
+				await supabase.from('report_photos').insert({
+					report_id: reportData.id,
+					storage_path: uploadedPhotoPath
+				});
+			}
+
+			if (formData.visibility === 'public') {
+				// Refresh posts
+				await fetchReportsAndDraw();
+				toastMessage = 'Post published on map';
+			} else {
+				toastMessage = 'Report sent to security staff';
+			}
 		}
 
 		showDetailForm = false;
 		selectedCategory = null;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
+	}
+
+	import { getUserLocation } from '$lib/utils/geolocation.js';
+
+	// --- USER VIEW FUNCTIONS ---
+	function handleNextStep() {
+		const center = mapInstance.getCenter();
+		pinCoordinates = { lng: center.lng, lat: center.lat };
+		showDetailForm = true;
 	}
 
 	function handleCategorySelect(e) {
@@ -399,7 +560,7 @@
 		});
 	}
 
-	function finishLineDrawing() {
+	async function finishLineDrawing() {
 		if (currentLinePoints.length < 2) {
 			alert('Click map to draw points');
 			return;
@@ -425,10 +586,6 @@
 		setTimeout(() => (showToast = false), 3000);
 		cancelAll();
 	}
-
-	import { getUserLocation } from '$lib/utils/geolocation.js';
-
-	// ... existing imports ...
 
 	let isLocating = false;
 
@@ -460,9 +617,9 @@
 </script>
 
 <div class="font-kanit relative flex h-screen w-full overflow-hidden bg-white">
-	<!-- ✅ TOGGLE BAR (Left Top) -->
+	<!-- ✅ TOGGLE BAR (Bottom Right - moved to avoid category panel overlap) -->
 	<div
-		class="absolute top-4 left-4 z-50 flex items-center gap-1 rounded-xl border border-gray-100 bg-white p-1 shadow-md"
+		class="absolute right-4 bottom-4 z-50 flex items-center gap-1 rounded-xl border border-gray-100 bg-white p-1 shadow-md"
 	>
 		<button
 			class="rounded-lg px-4 py-2 text-sm font-bold transition-all {viewMode === 'admin'
@@ -551,13 +708,14 @@
 						? 'border-b-2 border-[#8F66FF] text-[#8F66FF]'
 						: 'text-gray-400 hover:text-gray-600'}"
 				>
-					<Shield class="h-4 w-4" /> Security ({SECURITY_LOCATIONS.length})
+					<Shield class="h-4 w-4" /> Security ({securityZones.length})
 				</button>
 			</div>
 
 			<div class="custom-scrollbar flex-1 space-y-4 overflow-y-auto bg-gray-50 p-5">
 				{#if activeTab === 'posts'}
 					{#each filteredPosts as post}
+						<!-- ... existing post card ... -->
 						<div
 							class="relative cursor-pointer overflow-hidden rounded-2xl border bg-white p-5 transition-all hover:shadow-md {selectedPost?.id ===
 							post.id
@@ -565,6 +723,7 @@
 								: 'border-gray-100'}"
 							on:click={() => flyToPost(post)}
 						>
+							<!-- ... existing post content ... -->
 							<div
 								class="absolute top-0 bottom-0 left-0 w-1 {getCategoryBg(post.category).replace(
 									'100',
@@ -578,8 +737,8 @@
 									)} shrink-0"
 								>
 									<svelte:component
-										this={CATEGORY_STYLES[post.category].Icon}
-										class="h-5 w-5 {CATEGORY_STYLES[post.category].text}"
+										this={CATEGORY_STYLES[post.category]?.Icon || MessageSquare}
+										class="h-5 w-5 {CATEGORY_STYLES[post.category]?.text || 'text-gray-500'}"
 									/>
 								</div>
 								<div class="min-w-0 flex-1">
@@ -587,7 +746,7 @@
 										<span
 											class="text-[10px] font-extrabold tracking-wide uppercase {getCategoryColor(
 												post.category
-											)}">{CATEGORY_DISPLAY_NAMES[post.category]}</span
+											)}">{CATEGORY_DISPLAY_NAMES[post.category] || post.category}</span
 										>
 										<span class="text-[10px] text-gray-400">{timeAgo(post.timestamp)}</span>
 									</div>
@@ -607,7 +766,7 @@
 						</div>
 					{/each}
 				{:else}
-					{#each SECURITY_LOCATIONS as location}
+					{#each securityZones as location}
 						<div
 							class="flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 hover:bg-white hover:shadow-sm"
 							on:click={() => flyToSecurity(location)}
@@ -644,6 +803,11 @@
 
 		<!-- User View UI (Overlays) -->
 		{#if viewMode === 'user'}
+			<!-- Add Navbar for user view to match real user experience -->
+			{#if !selectedCategory && !isDrawingLine}
+				<Navbar on:toggleSidebar={() => (isFilterSidebarOpen = true)} />
+			{/if}
+
 			<button
 				class="absolute z-40 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-100 active:scale-95 {isMobile
 					? 'right-4 bottom-32 h-12 w-12'
