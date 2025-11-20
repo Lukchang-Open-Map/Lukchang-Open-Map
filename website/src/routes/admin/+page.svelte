@@ -28,7 +28,7 @@
 	import SendHelpConfirmModal from '$lib/component/common/SendHelpConfirmModal.svelte';
 	import FilterSidebar from '$lib/component/map/FilterSidebar.svelte';
 	import PointOrLineModal from '$lib/component/common/PointOrLineModal.svelte';
-	import { Crosshair } from 'lucide-svelte';
+	import { Crosshair, Loader2 } from 'lucide-svelte';
 
 	// Config & Utils
 	import {
@@ -377,12 +377,10 @@
 	}
 
 	function updateTempLine() {
-		mapInstance
-			.getSource('temp-line-source')
-			.setData({
-				type: 'Feature',
-				geometry: { type: 'LineString', coordinates: currentLinePoints }
-			});
+		mapInstance.getSource('temp-line-source').setData({
+			type: 'Feature',
+			geometry: { type: 'LineString', coordinates: currentLinePoints }
+		});
 	}
 
 	function addPermanentLineToMap(points, category) {
@@ -428,18 +426,25 @@
 		cancelAll();
 	}
 
-	function findUserLocation() {
-		if (!navigator.geolocation) return alert('Geolocation not supported');
-		navigator.geolocation.getCurrentPosition(
-			(pos) => {
-				const { longitude, latitude } = pos.coords;
-				new maplibreglInstance.Marker({ color: '#8F66FF' })
-					.setLngLat([longitude, latitude])
-					.addTo(mapInstance);
-				mapInstance.flyTo({ center: [longitude, latitude], zoom: 16 });
-			},
-			() => alert('Could not get location')
-		);
+	import { getUserLocation } from '$lib/utils/geolocation.js';
+
+	// ... existing imports ...
+
+	let isLocating = false;
+
+	async function findUserLocation() {
+		isLocating = true;
+		try {
+			const { latitude, longitude } = await getUserLocation();
+			new maplibreglInstance.Marker({ color: '#8F66FF' })
+				.setLngLat([longitude, latitude])
+				.addTo(mapInstance);
+			mapInstance.flyTo({ center: [longitude, latitude], zoom: 16 });
+		} catch (error) {
+			alert(error.message);
+		} finally {
+			isLocating = false;
+		}
 	}
 
 	// Toggle Helper
@@ -639,6 +644,21 @@
 
 		<!-- User View UI (Overlays) -->
 		{#if viewMode === 'user'}
+			<button
+				class="absolute z-40 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-100 active:scale-95 {isMobile
+					? 'right-4 bottom-32 h-12 w-12'
+					: 'right-4 bottom-38 h-10 w-10'}"
+				on:click={findUserLocation}
+				title="Find my location"
+				disabled={isLocating}
+			>
+				{#if isLocating}
+					<Loader2 class="h-6 w-6 animate-spin text-[#8F66FF]" />
+				{:else}
+					<Crosshair class="h-6 w-6 text-gray-600" />
+				{/if}
+			</button>
+
 			{#if !selectedCategory && !isDrawingLine}
 				{#if isMobile}
 					<button

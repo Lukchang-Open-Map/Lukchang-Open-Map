@@ -1,5 +1,9 @@
 <script>
-	import { onMount, mount } from 'svelte';
+	import { onMount, onDestroy, mount } from 'svelte';
+	// ... imports ...
+
+	// ... inside script ...
+
 	import { fade, fly } from 'svelte/transition';
 	import { userStore } from '$lib/stores/userStore.js';
 	import { goto } from '$app/navigation';
@@ -90,9 +94,17 @@
 		[98.96033540923719, 18.791163982975164]
 	];
 
+	const checkMobile = () => {
+		if (typeof window !== 'undefined') {
+			isMobile = window.innerWidth < 768;
+		}
+	};
+
 	onMount(async () => {
 		initializeMapInteractions();
-		isMobile = window.innerWidth < 768;
+
+		checkMobile();
+		window.addEventListener('resize', checkMobile);
 
 		// Wait for user session to hydrate
 		await new Promise((r) => setTimeout(r, 500));
@@ -119,6 +131,12 @@
 		// Close Splash Screen
 		await new Promise((resolve) => setTimeout(resolve, 1500));
 		showSplash = false;
+	});
+
+	onDestroy(() => {
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('resize', checkMobile);
+		}
 	});
 
 	// --- Supabase Data Fetching ---
@@ -312,18 +330,25 @@
 		}
 	}
 
-	function findUserLocation() {
-		if (!navigator.geolocation) return alert('Geolocation not supported');
-		navigator.geolocation.getCurrentPosition(
-			(pos) => {
-				const { longitude, latitude } = pos.coords;
-				new maplibreglInstance.Marker({ color: '#8F66FF' })
-					.setLngLat([longitude, latitude])
-					.addTo(mapInstance);
-				mapInstance.flyTo({ center: [longitude, latitude], zoom: 16 });
-			},
-			() => alert('Could not get location')
-		);
+	import { getUserLocation } from '$lib/utils/geolocation.js';
+
+	// ... existing imports ...
+
+	let isLocating = false;
+
+	async function findUserLocation() {
+		isLocating = true;
+		try {
+			const { latitude, longitude } = await getUserLocation();
+			new maplibreglInstance.Marker({ color: '#8F66FF' })
+				.setLngLat([longitude, latitude])
+				.addTo(mapInstance);
+			mapInstance.flyTo({ center: [longitude, latitude], zoom: 16 });
+		} catch (error) {
+			alert(error.message);
+		} finally {
+			isLocating = false;
+		}
 	}
 
 	function handleNextStep() {
@@ -644,7 +669,7 @@
 
 		{#if selectedCategory && !showDetailForm && !isDrawingLine}
 			<div
-				class="pointer-events-none absolute top-24 right-0 left-0 z-30 flex justify-center"
+				class="pt-safe pointer-events-none absolute top-24 right-0 left-0 z-30 flex justify-center"
 				in:fly={{ y: -20, duration: 300 }}
 			>
 				<div
@@ -671,7 +696,7 @@
 					/><circle cx="12" cy="8" r="3.5" fill="white" /></svg
 				>
 			</div>
-			<div class="absolute right-0 bottom-8 left-0 z-50 flex justify-center gap-4 px-4">
+			<div class="pb-safe absolute right-0 bottom-8 left-0 z-50 flex justify-center gap-4 px-4">
 				<button
 					class="btn w-32 rounded-full border-gray-200 bg-white px-8 font-bold text-gray-700 shadow-lg hover:bg-gray-50"
 					on:click={cancelAll}>Cancel</button
@@ -684,7 +709,9 @@
 		{/if}
 
 		{#if isDrawingLine}
-			<div class="pointer-events-none absolute top-24 right-0 left-0 z-30 flex justify-center">
+			<div
+				class="pt-safe pointer-events-none absolute top-24 right-0 left-0 z-30 flex justify-center"
+			>
 				<div class="rounded-full border border-gray-100 bg-white px-6 py-3 shadow-lg">
 					<span
 						class="font-bold {drawingLineCategory.includes('traffic')
@@ -696,7 +723,7 @@
 					</span>
 				</div>
 			</div>
-			<div class="absolute right-0 bottom-8 left-0 z-50 flex justify-center gap-4 px-4">
+			<div class="pb-safe absolute right-0 bottom-8 left-0 z-50 flex justify-center gap-4 px-4">
 				<button
 					class="btn rounded-full border-gray-200 bg-white px-8 text-black shadow-lg"
 					on:click={cancelAll}>Cancel</button
@@ -720,12 +747,19 @@
 
 		<button
 			class="absolute z-40 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-100 active:scale-95 {isMobile
-				? 'right-4 bottom-32 h-12 w-12'
+				? 'pb-safe-offset right-4 bottom-32 h-12 w-12'
 				: 'right-4 bottom-38 h-10 w-10'}"
 			on:click={findUserLocation}
 			title="Find my location"
+			disabled={isLocating}
 		>
-			<Crosshair class="h-6 w-6 text-gray-600" />
+			{#if isLocating}
+				<div
+					class="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-[#8F66FF]"
+				></div>
+			{:else}
+				<Crosshair class="h-6 w-6 text-gray-600" />
+			{/if}
 		</button>
 
 		{#if showDetailForm}
@@ -785,6 +819,19 @@
 			0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
 		border: none !important;
 	}
+
+	.pt-safe {
+		padding-top: max(0px, env(safe-area-inset-top));
+	}
+
+	.pb-safe {
+		padding-bottom: max(0px, env(safe-area-inset-bottom));
+	}
+
+	.pb-safe-offset {
+		margin-bottom: max(0px, env(safe-area-inset-bottom));
+	}
+
 	:global(.cmu-popup .maplibregl-popup-tip) {
 		display: none !important;
 	}

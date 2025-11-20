@@ -14,6 +14,9 @@ export default defineConfig({
 			outdir: './src/lib/paraglide'
 		})
 	],
+	server: {
+		allowedHosts: ['weevil-excited-precisely.ngrok-free.app']
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

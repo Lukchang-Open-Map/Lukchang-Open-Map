@@ -40,23 +40,14 @@
 				on:click={() => (isProfileOpen = !isProfileOpen)}
 				class="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-2 pr-4 shadow-sm transition-all hover:bg-gray-50"
 			>
-				<div class="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
+				<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100">
 					<User class="h-5 w-5 text-gray-600" />
 				</div>
-				<div class="flex items-center gap-2">
-					<span class="text-lg font-bold text-gray-800">{$userStore?.name ?? 'User'}</span>
-					{#if $userStore?.role}
-						<span
-							class="rounded-full bg-[#EBE0F3] px-2 py-0.5 text-xs font-bold tracking-wide text-[#8F66FF] uppercase"
-						>
-							{$userStore.role}
-						</span>
-					{/if}
-				</div>
+				<span class="max-w-[200px] truncate text-lg font-bold text-gray-800 hidden sm:block">{$userStore?.name ?? 'User'}</span>
 				{#if isProfileOpen}
-					<ChevronUp class="h-4 w-4 text-gray-400" />
+					<ChevronUp class="h-4 w-4 shrink-0 text-gray-400" />
 				{:else}
-					<ChevronDown class="h-4 w-4 text-gray-400" />
+					<ChevronDown class="h-4 w-4 shrink-0 text-gray-400" />
 				{/if}
 			</button>
 
@@ -65,8 +56,17 @@
 					class="animate-in fade-in slide-in-from-top-2 absolute right-0 z-50 mt-2 w-64 rounded-2xl border border-gray-100 bg-white p-4 shadow-xl"
 				>
 					<div class="border-b border-gray-100 pb-3">
-						<div class="text-xl font-bold text-gray-900">{$userStore?.name}</div>
+						<!-- <div class="text-xl font-bold text-gray-900">{$userStore?.name}</div> -->
 						<div class="mt-1 text-sm text-gray-500">{$userStore?.email}</div>
+						{#if $userStore?.role}
+							<div class="mt-2">
+								<span
+									class="inline-block rounded-full bg-[#EBE0F3] px-3 py-1 text-xs font-bold tracking-wide text-[#8F66FF] uppercase"
+								>
+									{$userStore.role}
+								</span>
+							</div>
+						{/if}
 					</div>
 					<div class="pt-2">
 						<button
