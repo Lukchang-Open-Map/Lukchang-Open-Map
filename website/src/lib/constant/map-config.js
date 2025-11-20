@@ -23,7 +23,9 @@ export const CATEGORY_DISPLAY_NAMES = {
 	parking: 'Parking',
 	events: 'Events',
 	map_chat: 'Map Chat',
-	lost_found: 'Lost & Found'
+
+	lost_found: 'Lost & Found',
+	blocked_line: 'Road Closed'
 };
 
 export const CATEGORY_STYLES = {
@@ -36,7 +38,9 @@ export const CATEGORY_STYLES = {
 	parking: { Icon: ParkingSquare, bg: 'bg-blue-100', text: 'text-blue-600' },
 	events: { Icon: PartyPopper, bg: 'bg-purple-100', text: 'text-purple-600' },
 	map_chat: { Icon: MessageSquare, bg: 'bg-green-100', text: 'text-green-600' },
-	lost_found: { Icon: Briefcase, bg: 'bg-orange-200', text: 'text-orange-600' }
+
+	lost_found: { Icon: Briefcase, bg: 'bg-orange-200', text: 'text-orange-600' },
+	blocked_line: { Icon: TrafficCone, bg: 'bg-orange-100', text: 'text-orange-600' }
 };
 
 export const BLOCKED_MODAL_CONFIG = {
