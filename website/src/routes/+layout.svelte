@@ -1,7 +1,7 @@
 <script>
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import "maplibre-gl/dist/maplibre-gl.css";
+	import 'maplibre-gl/dist/maplibre-gl.css';
 
 	let { children } = $props();
 </script>

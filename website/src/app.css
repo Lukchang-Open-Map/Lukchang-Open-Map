@@ -1,12 +1,12 @@
-@import 'tailwindcss';
 @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@100;200;300;400;500;600;700;800;900&display=swap');
+@import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
-@plugin "daisyui" {
-    themes: light --default;
+@plugin 'daisyui' {
+	themes: light --default;
 }
-@import "maplibre-gl/dist/maplibre-gl.css";
+@import 'maplibre-gl/dist/maplibre-gl.css';
 
 body {
-  font-family: 'Kanit', sans-serif;
+	font-family: 'Kanit', sans-serif;
 }

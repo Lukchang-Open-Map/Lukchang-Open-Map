@@ -3,6 +3,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import { userStore } from '$lib/stores/userStore.js';
 	import { goto } from '$app/navigation';
+	import { supabase } from '$lib/supabaseClient';
 
 	// Components
 	import BaseMap from '$lib/component/map/BaseMap.svelte';
@@ -18,7 +19,6 @@
 	// Icons & Config
 	import { Crosshair } from 'lucide-svelte';
 	import { CATEGORY_DISPLAY_NAMES, BLOCKED_MODAL_CONFIG } from '$lib/constant/map-config.js';
-	import { generateUUID } from '$lib/utils/generators.js';
 	import { timeAgo } from '$lib/utils/formatting.js';
 	import { initializeMapInteractions } from '$lib/utils/map-interactions.js';
 
@@ -26,7 +26,6 @@
 	let mapInstance;
 	let maplibreglInstance;
 	let isMobile = false;
-
 	let showSplash = true;
 
 	// UI State
@@ -37,7 +36,13 @@
 	let showSendHelpModal = false;
 	let isFilterSidebarOpen = false;
 	let isPointOrLineModalOpen = false;
+
+	// --- เติมบรรทัดนี้เข้าไปครับ ---
 	let modalConfig = {};
+	// Data State (Real Data)
+	let categoriesDB = [];
+	let mapMarkers = [];
+	let layersIds = [];
 
 	// Filter State
 	let filterState = {
@@ -61,7 +66,7 @@
 	let showToast = false;
 	let toastMessage = '';
 
-	// Coordinates for the allowed area
+	// Hardcoded Fallback Area
 	const focusAreaCoordinates = [
 		[98.9601657275698, 18.79084270775664],
 		[98.96211706674501, 18.795420821749346],
@@ -89,120 +94,213 @@
 		initializeMapInteractions();
 		isMobile = window.innerWidth < 768;
 
-		if (!$userStore) {
-			goto('/login');
-			return;
-		}
-		if ($userStore.role === 'admin') {
-			goto('/admin');
-			return;
-		}
-		if ($userStore.role === 'security') {
-			goto('/security');
-			return;
+		// Wait for user session to hydrate
+		await new Promise((r) => setTimeout(r, 500));
+
+		if (!$userStore || !$userStore.id) {
+			const {
+				data: { user }
+			} = await supabase.auth.getUser();
+			if (user) {
+				userStore.set({
+					id: user.id,
+					name: user.email ? user.email.split('@')[0] : 'User',
+					email: user.email,
+					role: user.role
+				});
+			} else {
+				goto('/login');
+				return;
+			}
 		}
 
-		await new Promise((resolve) => setTimeout(resolve, 3000));
+		await fetchCategories();
+
+		// Close Splash Screen
+		await new Promise((resolve) => setTimeout(resolve, 1500));
 		showSplash = false;
 	});
+
+	// --- Supabase Data Fetching ---
+
+	async function fetchCategories() {
+		const { data, error } = await supabase
+			.from('report_categories')
+			.select('*')
+			.eq('is_active', true);
+
+		if (data) {
+			categoriesDB = data;
+		} else {
+			console.error('Error fetching categories:', error);
+		}
+	}
+
+	async function fetchReportsAndDraw() {
+		if (!mapInstance) return;
+
+		// Clear existing markers & lines
+		mapMarkers.forEach((marker) => marker.remove());
+		mapMarkers = [];
+		layersIds.forEach((id) => {
+			if (mapInstance.getLayer(id)) mapInstance.removeLayer(id);
+			if (mapInstance.getSource(id)) mapInstance.removeSource(id);
+		});
+		layersIds = [];
+
+		// Fetch Active Reports
+		// FIX: Using ONLY 'pending' to ensure compatibility with DB Enum
+		const { data: reports, error } = await supabase
+			.from('reports')
+			.select(
+				`
+					*,
+					category:report_categories(name, icon),
+					reporter:profiles!created_by_user_id(full_name),
+					votes:report_verifications(vote)
+				`
+			)
+			.eq('status', 'pending') // <--- ใช้ค่า pending อย่างเดียวเพื่อความชัวร์
+			.order('created_at', { ascending: false });
+
+		if (error) {
+			console.error('Error loading reports:', error);
+			// Do not return, let the code run so map stays usable
+		}
+
+		if (reports) {
+			reports.forEach((report) => {
+				const geo = report.geometry;
+				const votes = report.votes || [];
+				const likes = votes.filter((v) => v.vote === 1).length;
+				const dislikes = votes.filter((v) => v.vote === -1).length;
+
+				if (geo.type === 'Point') {
+					addPinToMap({
+						id: report.id,
+						category: report.category?.name || 'general',
+						coordinates: { lng: geo.coordinates[0], lat: geo.coordinates[1] },
+						title: report.title,
+						description: report.description,
+						reporter: report.is_anonymous ? 'Anonymous' : report.reporter?.full_name || 'Unknown',
+						timestamp: report.created_at,
+						photoPreviewUrl: null,
+						likes,
+						dislikes
+					});
+				} else if (geo.type === 'LineString') {
+					addPermanentLineToMap(geo.coordinates, report.category?.name || 'general', report.id);
+					addPinToMap({
+						id: report.id,
+						category: report.category?.name || 'general',
+						coordinates: { lng: geo.coordinates[0][0], lat: geo.coordinates[0][1] },
+						title: report.title,
+						description: report.description,
+						reporter: report.is_anonymous ? 'Anonymous' : report.reporter?.full_name || 'Unknown',
+						timestamp: report.created_at,
+						photoPreviewUrl: null,
+						likes,
+						dislikes
+					});
+				}
+			});
+		}
+	}
+
+	// --- Map Logic ---
 
 	function handleMapLoad({ detail }) {
 		mapInstance = detail.map;
 		maplibreglInstance = detail.maplibregl;
-		mapInstance.addSource('temp-line-source', {
-			type: 'geojson',
-			data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } }
-		});
-		mapInstance.addLayer({
-			id: 'temp-line-layer',
-			type: 'line',
-			source: 'temp-line-source',
-			paint: { 'line-color': '#F97316', 'line-width': 5, 'line-dasharray': [2, 2] }
-		});
 
-		// Auto-focus to the specific area defined by the coordinates
+		// 1. Setup Temp Line (Dashed line for drawing)
+		if (!mapInstance.getSource('temp-line-source')) {
+			mapInstance.addSource('temp-line-source', {
+				type: 'geojson',
+				data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } }
+			});
+			mapInstance.addLayer({
+				id: 'temp-line-layer',
+				type: 'line',
+				source: 'temp-line-source',
+				paint: { 'line-color': '#F97316', 'line-width': 5, 'line-dasharray': [2, 2] }
+			});
+		}
 
-		// Calculate the bounds of the area
+		// 2. Setup Focus Area (Purple Highlight)
+		// FIX: We draw this BEFORE fetching data to ensure it exists even if DB fails
 		const bounds = new maplibreglInstance.LngLatBounds();
 		focusAreaCoordinates.forEach((coord) => {
 			bounds.extend(coord);
 		});
 
-		// Fit the map to the bounds with some padding
 		mapInstance.fitBounds(bounds, {
 			padding: 50,
 			duration: 1500
 		});
 
-		// Add a highlighted line around the area
 		const areaLineId = 'focus-area-line';
 		const areaSourceId = 'focus-area-source';
 
-		// Create a LineString feature with the coordinates
-		const areaFeature = {
-			type: 'Feature',
-			properties: {},
-			geometry: {
-				type: 'LineString',
-				coordinates: focusAreaCoordinates
-			}
-		};
+		if (!mapInstance.getSource(areaSourceId)) {
+			const areaFeature = {
+				type: 'Feature',
+				properties: {},
+				geometry: {
+					type: 'LineString',
+					coordinates: focusAreaCoordinates
+				}
+			};
 
-		// Add the source for the area line
-		mapInstance.addSource(areaSourceId, {
-			type: 'geojson',
-			data: areaFeature
-		});
+			mapInstance.addSource(areaSourceId, {
+				type: 'geojson',
+				data: areaFeature
+			});
 
-		// Add the layer for the area line with highlighting
-		mapInstance.addLayer({
-			id: areaLineId,
-			type: 'line',
-			source: areaSourceId,
-			layout: {
-				'line-join': 'round',
-				'line-cap': 'round'
-			},
-			paint: {
-				'line-color': '#8F66FF', // Purple color to match the theme
-				'line-width': 4,
-				'line-opacity': 0.8
-			}
-		});
+			mapInstance.addLayer({
+				id: areaLineId,
+				type: 'line',
+				source: areaSourceId,
+				layout: {
+					'line-join': 'round',
+					'line-cap': 'round'
+				},
+				paint: {
+					'line-color': '#8F66FF',
+					'line-width': 4,
+					'line-opacity': 0.8
+				}
+			});
+		}
+
+		// 3. Load Data from DB
+		fetchReportsAndDraw();
 	}
 
-	// Check if a point is within the allowed area using ray casting algorithm
 	function isPointInArea(point, polygon) {
 		let x = point[0],
 			y = point[1];
 		let inside = false;
-
 		for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
 			let xi = polygon[i][0],
 				yi = polygon[i][1];
 			let xj = polygon[j][0],
 				yj = polygon[j][1];
-
 			let intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
 			if (intersect) inside = !inside;
 		}
-
 		return inside;
 	}
 
 	function handleMapClick({ detail: e }) {
 		if (isDrawingLine) {
 			const coords = e.lngLat.toArray();
-
-			// Check if the coordinates are within the allowed area
 			if (!isPointInArea(coords, focusAreaCoordinates)) {
-				// Show a toast message informing the user
 				toastMessage = 'Lines can only be drawn within the specified area';
 				showToast = true;
 				setTimeout(() => (showToast = false), 3000);
-				return; // Don't add the point to the line
+				return;
 			}
-
 			currentLinePoints.push(coords);
 			updateTempLine();
 			const el = document.createElement('div');
@@ -232,16 +330,12 @@
 		if (mapInstance) {
 			const center = mapInstance.getCenter();
 			const currentCoords = [center.lng, center.lat];
-
-			// Check if the coordinates are within the allowed area
 			if (!isPointInArea(currentCoords, focusAreaCoordinates)) {
-				// Show a toast message informing the user
 				toastMessage = 'Pins can only be placed within the specified area';
 				showToast = true;
 				setTimeout(() => (showToast = false), 3000);
-				return; // Don't proceed with showing the detail form
+				return;
 			}
-
 			pinCoordinates = { lng: center.lng, lat: center.lat };
 			showDetailForm = true;
 		}
@@ -254,81 +348,205 @@
 		});
 	}
 
-	function addPermanentLineToMap(points, category) {
-		const lineId = generateUUID();
+	function addPermanentLineToMap(points, category, id) {
+		const lineId = id || crypto.randomUUID();
 		const lineColor = category.includes('blocked') ? '#F97316' : '#EF4444';
-		mapInstance.addSource(`perm-line-source-${lineId}`, {
-			type: 'geojson',
-			data: { type: 'Feature', geometry: { type: 'LineString', coordinates: points } }
-		});
-		mapInstance.addLayer({
-			id: `perm-line-layer-${lineId}`,
-			type: 'line',
-			source: `perm-line-source-${lineId}`,
-			layout: { 'line-join': 'round', 'line-cap': 'round' },
-			paint: { 'line-color': lineColor, 'line-width': 6, 'line-opacity': 0.8 }
-		});
+
+		layersIds.push(`perm-line-layer-${lineId}`);
+		layersIds.push(`perm-line-source-${lineId}`);
+
+		if (!mapInstance.getSource(`perm-line-source-${lineId}`)) {
+			mapInstance.addSource(`perm-line-source-${lineId}`, {
+				type: 'geojson',
+				data: { type: 'Feature', geometry: { type: 'LineString', coordinates: points } }
+			});
+			mapInstance.addLayer({
+				id: `perm-line-layer-${lineId}`,
+				type: 'line',
+				source: `perm-line-source-${lineId}`,
+				layout: { 'line-join': 'round', 'line-cap': 'round' },
+				paint: { 'line-color': lineColor, 'line-width': 6, 'line-opacity': 0.8 }
+			});
+		}
 	}
 
 	function addPinToMap(data) {
 		const el = document.createElement('div');
 		mount(CustomMarker, { target: el, props: { category: data.category } });
-		const pinId = data.id || generateUUID();
-		const likes = data.likes || 0;
-		const dislikes = data.dislikes || 0;
+		const pinId = data.id;
+
+		// Popup Content
 		const imageHTML = data.photoPreviewUrl
 			? `<div style="width: 100%; height: 140px; background-image: url('${data.photoPreviewUrl}'); background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 12px;"></div>`
 			: '';
+
+		window[`handleLike_${pinId}`] = () => handleVote(pinId, 1);
+		window[`handleDislike_${pinId}`] = () => handleVote(pinId, -1);
+
 		const popupHTML = `
             <div style="font-family: 'Kanit', sans-serif; min-width: 200px; padding: 4px;">
                 ${imageHTML}
                 <h3 style="font-size: 20px; font-weight: 900; color: #000; margin: 0 0 12px 0; line-height: 1.2;">${data.title}</h3>
                 <div style="display: flex; justify-content: space-between; align-items: flex-end;">
                     <div style="font-size: 13px; line-height: 1.4; color: #6B7280;">
-                        <span>report by</span><br><span style="color: #1F2937; font-weight: 700;">${data.reporter || 'anonymous'}</span><br><span>${timeAgo(data.timestamp)}</span>
+                        <span>report by</span><br><span style="color: #1F2937; font-weight: 700;">${data.reporter}</span><br><span>${timeAgo(data.timestamp)}</span>
                     </div>
                     <div style="display: flex; gap: 16px; align-items: center;">
-                        <div style="display: flex; align-items: center; gap: 6px;"><button id="like-button-${pinId}" onclick="window.handleLike('${pinId}')" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><span id="like-count-${pinId}" style="font-weight: 800; font-size: 16px; color: #374151;">${likes}</span></div>
-                        <div style="display: flex; align-items: center; gap: 6px;"><button id="dislike-button-${pinId}" onclick="window.handleDislike('${pinId}')" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: scaleY(-1);"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><span id="dislike-count-${pinId}" style="font-weight: 800; font-size: 16px; color: #374151;">${dislikes}</span></div>
+                         <div style="display: flex; align-items: center; gap: 6px;">
+                            <button onclick="window['handleLike_${pinId}']()" style="cursor: pointer; border: none; background: none;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+                            </button>
+                            <span id="like-count-${pinId}" style="font-weight: 800;">${data.likes}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <button onclick="window['handleDislike_${pinId}']()" style="cursor: pointer; border: none; background: none;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" style="transform: scaleY(-1);"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+                            </button>
+                            <span id="dislike-count-${pinId}" style="font-weight: 800;">${data.dislikes}</span>
+                        </div>
                     </div>
                 </div>
             </div>`;
+
 		const popup = new maplibreglInstance.Popup({
 			offset: 35,
 			className: 'cmu-popup',
 			closeButton: false,
 			maxWidth: '300px'
 		}).setHTML(popupHTML);
-		new maplibreglInstance.Marker({ element: el, anchor: 'bottom' })
+
+		const marker = new maplibreglInstance.Marker({ element: el, anchor: 'bottom' })
 			.setLngLat([data.coordinates.lng, data.coordinates.lat])
 			.setPopup(popup)
 			.addTo(mapInstance);
+
+		mapMarkers.push(marker);
 	}
 
-	function handlePinSubmit(e) {
-		const formData = e.detail;
-		if (formData.visibility === 'public') {
-			addPinToMap(formData);
-			toastMessage = 'Post published on map';
-		} else {
-			toastMessage = 'Report sent to security staff';
+	async function handleVote(reportId, voteType) {
+		const { error } = await supabase.from('report_verifications').upsert({
+			report_id: reportId,
+			user_id: $userStore.id,
+			vote: voteType
+		});
+
+		if (!error) {
+			console.log('Voted successfully');
 		}
+	}
+
+	async function handlePinSubmit(e) {
+		const formData = e.detail;
+		const categoryObj = categoriesDB.find(
+			(c) => c.name === CATEGORY_DISPLAY_NAMES[selectedCategory]
+		);
+		if (!categoryObj) return alert('Category not found');
+
+		let uploadedPhotoPath = null;
+
+		if (formData.photoFile) {
+			const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.jpg`;
+			const { data: uploadData, error: uploadError } = await supabase.storage
+				.from('report-photos')
+				.upload(fileName, formData.photoFile);
+
+			if (uploadError) {
+				console.error('Upload failed', uploadError);
+				return alert('Photo upload failed');
+			}
+			uploadedPhotoPath = uploadData.path;
+		}
+
+		const { data: reportData, error: reportError } = await supabase
+			.from('reports')
+			.insert({
+				created_by_user_id: $userStore.id,
+				category_id: categoryObj.id,
+				title: formData.title,
+				description: formData.description,
+				geometry: {
+					type: 'Point',
+					coordinates: [pinCoordinates.lng, pinCoordinates.lat]
+				},
+				status: 'pending',
+				is_anonymous: false,
+				visibility: formData.visibility || 'public'
+			})
+			.select()
+			.single();
+
+		if (reportError) {
+			console.error('Insert report failed', reportError);
+			toastMessage = 'Failed to submit report';
+		} else {
+			if (uploadedPhotoPath) {
+				await supabase.from('report_photos').insert({
+					report_id: reportData.id,
+					storage_path: uploadedPhotoPath
+				});
+			}
+			toastMessage =
+				formData.visibility === 'public' ? 'Post published on map' : 'Report sent to security';
+			fetchReportsAndDraw();
+		}
+
 		showDetailForm = false;
 		selectedCategory = null;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
 	}
 
+	async function finishLineDrawing() {
+		if (currentLinePoints.length < 2) {
+			alert('Please click on the map to draw at least 2 points.');
+			return;
+		}
+
+		const allPointsInArea = currentLinePoints.every((point) =>
+			isPointInArea(point, focusAreaCoordinates)
+		);
+		if (!allPointsInArea) {
+			toastMessage = 'Lines can only be drawn within the specified area';
+			showToast = true;
+			setTimeout(() => (showToast = false), 3000);
+			return;
+		}
+
+		const key = drawingLineCategory.includes('traffic') ? 'traffic_general' : 'blocked';
+		const categoryObj = categoriesDB.find((c) => c.name === CATEGORY_DISPLAY_NAMES[key]);
+
+		const { error } = await supabase.from('reports').insert({
+			created_by_user_id: $userStore.id,
+			category_id: categoryObj ? categoryObj.id : 1,
+			title: drawingLineCategory.includes('traffic') ? 'Traffic Jam' : 'Road Closed',
+			description: 'Reported route via map drawing',
+			geometry: {
+				type: 'LineString',
+				coordinates: currentLinePoints
+			},
+			status: 'pending'
+		});
+
+		if (!error) {
+			toastMessage = 'Route reported successfully';
+			fetchReportsAndDraw();
+		} else {
+			toastMessage = 'Failed to report route';
+			console.error(error);
+		}
+
+		showToast = true;
+		setTimeout(() => (showToast = false), 3000);
+		cancelAll();
+	}
+
 	function handleCategorySelect(e) {
 		const category = e.detail;
-
 		isMobileCategorySheetOpen = false;
-
 		if (category === 'send_help') {
 			showSendHelpModal = true;
 			return;
 		}
-
 		if (category === 'blocked') {
 			modalConfig = BLOCKED_MODAL_CONFIG;
 			isPointOrLineModalOpen = true;
@@ -369,46 +587,16 @@
 			updateTempLine();
 		}
 	}
-
-	function finishLineDrawing() {
-		if (currentLinePoints.length < 2) {
-			alert('Please click on the map to draw at least 2 points.');
-			return;
-		}
-
-		// Validate that all line points are within the allowed area
-		const allPointsInArea = currentLinePoints.every((point) =>
-			isPointInArea(point, focusAreaCoordinates)
-		);
-		if (!allPointsInArea) {
-			toastMessage = 'Lines can only be drawn within the specified area';
-			showToast = true;
-			setTimeout(() => (showToast = false), 3000);
-			return;
-		}
-
-		addPermanentLineToMap(currentLinePoints, drawingLineCategory);
-		addPinToMap({
-			category: drawingLineCategory.includes('traffic') ? 'traffic_general' : 'blocked',
-			coordinates: { lng: currentLinePoints[0][0], lat: currentLinePoints[0][1] },
-			title: drawingLineCategory.includes('traffic') ? 'Traffic Jam' : 'Road Off / Closed',
-			description: drawingLineCategory.includes('traffic')
-				? 'Heavy traffic reported.'
-				: 'Reported road closure area.',
-			reporter: $userStore?.name || 'Anonymous',
-			timestamp: new Date().toISOString(),
-			likes: 0,
-			dislikes: 0
-		});
-		toastMessage = 'Route reported successfully';
-		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
-		cancelAll();
-	}
 </script>
 
 <svelte:head>
-	<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+	<script>
+		if (!customElements.get('lottie-player')) {
+			var script = document.createElement('script');
+			script.src = 'https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js';
+			document.head.appendChild(script);
+		}
+	</script>
 </svelte:head>
 
 <div class="font-kanit relative h-screen w-full overflow-hidden bg-white">
