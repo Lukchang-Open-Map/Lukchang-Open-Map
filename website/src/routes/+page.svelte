@@ -437,9 +437,7 @@
 
 	async function handlePinSubmit(e) {
 		const formData = e.detail;
-		const categoryObj = categoriesDB.find(
-			(c) => c.name === CATEGORY_DISPLAY_NAMES[selectedCategory]
-		);
+		const categoryObj = categoriesDB.find((c) => c.name === selectedCategory);
 		if (!categoryObj) return alert('Category not found');
 
 		let uploadedPhotoPath = null;
@@ -513,7 +511,7 @@
 		}
 
 		const key = drawingLineCategory.includes('traffic') ? 'traffic_general' : 'blocked';
-		const categoryObj = categoriesDB.find((c) => c.name === CATEGORY_DISPLAY_NAMES[key]);
+		const categoryObj = categoriesDB.find((c) => c.name === key);
 
 		const { error } = await supabase.from('reports').insert({
 			created_by_user_id: $userStore.id,
