@@ -199,11 +199,12 @@ VALUES
   (3, 'beware', 'incident', 'point', 'HelpCircle', 'bg-gray-200', 3),
   (4, 'flood', 'incident', 'point', 'Droplet', 'bg-blue-100', 4),
   (5, 'send_help', 'incident', 'point', 'LifeBuoy', 'bg-red-100', 5),
-  (6, 'traffic_general', 'general', 'point', 'CarFront', 'bg-red-100', 6),
+  (6, 'traffic_general', 'general', 'linestring', 'CarFront', 'bg-red-100', 6),
   (7, 'parking', 'general', 'point', 'ParkingSquare', 'bg-blue-100', 7),
   (8, 'events', 'general', 'point', 'PartyPopper', 'bg-purple-100', 8),
   (9, 'map_chat', 'general', 'point', 'MessageSquare', 'bg-green-100', 9),
-  (10, 'lost_found', 'general', 'point', 'Briefcase', 'bg-orange-200', 10)
+  (10, 'lost_found', 'general', 'point', 'Briefcase', 'bg-orange-200', 10),
+  (11, 'blocked_line', 'incident', 'linestring', 'TrafficCone', 'bg-orange-100', 11)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   type = EXCLUDED.type,

@@ -510,12 +510,12 @@
 			return;
 		}
 
-		const key = drawingLineCategory.includes('traffic') ? 'traffic_general' : 'blocked';
+		const key = drawingLineCategory.includes('traffic') ? 'traffic_general' : 'blocked_line';
 		const categoryObj = categoriesDB.find((c) => c.name === key);
 
 		const { error } = await supabase.from('reports').insert({
 			created_by_user_id: $userStore.id,
-			category_id: categoryObj ? categoryObj.id : 1,
+			category_id: categoryObj ? categoryObj.id : drawingLineCategory.includes('traffic') ? 6 : 11,
 			title: drawingLineCategory.includes('traffic') ? 'Traffic Jam' : 'Road Closed',
 			description: 'Reported route via map drawing',
 			geometry: {
